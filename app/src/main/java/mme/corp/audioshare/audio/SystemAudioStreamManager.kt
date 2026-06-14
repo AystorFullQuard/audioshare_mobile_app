@@ -1,12 +1,13 @@
 package mme.corp.audioshare.audio
+
 import android.util.Log
-import mme.corp.audioshare.audio.capture.MicrophoneCapture
+import mme.corp.audioshare.audio.capture.SystemAudioCapture
 import mme.corp.audioshare.network.udp.UdpAudioSender
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
-class AudioStreamManager(
-    private val mic: MicrophoneCapture,
+class SystemAudioStreamManager(
+    private val capture: SystemAudioCapture,
     private val sender: UdpAudioSender,
     private val frameSize: Int,
     private val onError: (Throwable) -> Unit = {}
@@ -21,7 +22,7 @@ class AudioStreamManager(
         }
 
         try {
-            mic.start()
+            capture.start()
         } catch (t: Throwable) {
             running.set(false)
             sender.close()
@@ -31,15 +32,18 @@ class AudioStreamManager(
 
         val buffer = ByteArray(frameSize)
 
-        worker = thread(name = "audio-stream-thread") {
+        worker = thread(name = "system-audio-stream-thread") {
             try {
                 while (running.get()) {
-                    val read = mic.read(buffer)
+                    val read = capture.read(buffer)
 
                     if (read > 0) {
                         sender.send(buffer, read)
                     } else {
-                        Log.w("AudioStreamManager", "AudioRecord read returned: $read")
+                        Log.w(
+                            "SystemAudioStreamManager",
+                            "AudioRecord read returned: $read"
+                        )
                     }
                 }
             } catch (t: Throwable) {
@@ -48,7 +52,7 @@ class AudioStreamManager(
                 }
             } finally {
                 running.set(false)
-                mic.stop()
+                capture.stop()
                 sender.close()
             }
         }
@@ -57,7 +61,7 @@ class AudioStreamManager(
     fun stop() {
         running.set(false)
         worker?.interrupt()
-        mic.stop()
+        capture.stop()
         sender.close()
         worker = null
     }
