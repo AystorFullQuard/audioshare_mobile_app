@@ -1,6 +1,7 @@
 package mme.corp.audioshare
 
 import android.Manifest
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -37,6 +38,8 @@ import androidx.core.content.ContextCompat
 import mme.corp.audioshare.audio.AudioStreamManager
 import mme.corp.audioshare.audio.TestToneStreamManager
 import mme.corp.audioshare.audio.capture.MicrophoneCapture
+import mme.corp.audioshare.network.discovery.DiscoveredReceiver
+import mme.corp.audioshare.network.discovery.UdpDiscoveryClient
 import mme.corp.audioshare.network.udp.UdpAudioSender
 import mme.corp.audioshare.service.AudioStreamingService
 import mme.corp.audioshare.util.NetworkUtils
@@ -48,6 +51,7 @@ class MainActivity : ComponentActivity() {
 
     private var streamManager: AudioStreamManager? = null
     private var testToneStreamManager: TestToneStreamManager? = null
+    private var discoveryClient: UdpDiscoveryClient? = null
 
     private data class PermissionUiState(
         val hasAudioPermission: Boolean,
@@ -65,16 +69,30 @@ class MainActivity : ComponentActivity() {
         val receiverIp: String,
         val status: String,
         val permissions: PermissionUiState,
-        val packets: PacketUiState
+        val packets: PacketUiState,
+        val discoveredReceivers: List<DiscoveredReceiver>,
+        val selectedReceiver: DiscoveredReceiver?
     )
 
-    private data class DebugActions(
+    private data class InputActions(
         val onReceiverIpChange: (String) -> Unit,
         val onCopyIpClick: () -> Unit,
-        val onStartMicSenderClick: () -> Unit,
-        val onStartTestToneSenderClick: () -> Unit,
-        val onStartSystemAudioSenderClick: () -> Unit,
+        val onSelectReceiverClick: (DiscoveredReceiver) -> Unit
+    )
+
+    private data class ReceiverActions(
         val onStartReceiverServiceClick: () -> Unit,
+        val onFindReceiversClick: () -> Unit
+    )
+
+    private data class SenderActions(
+        val onStartSystemAudioSenderClick: () -> Unit,
+        val onStartMicSenderClick: () -> Unit,
+        val onStartTestToneSenderClick: () -> Unit
+    )
+
+    private data class CommonActions(
+        val onRequestPermissionsAgainClick: () -> Unit,
         val onStopClick: () -> Unit
     )
 
@@ -95,26 +113,33 @@ class MainActivity : ComponentActivity() {
         val onStatusChange: (String) -> Unit
     )
 
+    private data class DiscoveryCallbacks(
+        val onReceiversFound: (List<DiscoveredReceiver>) -> Unit,
+        val onStatusChange: (String) -> Unit
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-            AudioShareDebugScreen()
+            AudioShareScreen()
         }
     }
 
     @Composable
-    private fun AudioShareDebugScreen() {
+    private fun AudioShareScreen() {
         val activity = this
         val context = LocalContext.current
         val localIp = remember { NetworkUtils.getLocalIpAddress() }
 
         var receiverIp by remember { mutableStateOf("") }
-        var status by remember { mutableStateOf("Idle") }
+        var status by remember { mutableStateOf("Ready. Start Receive Audio on the playback phone.") }
         var packetsSent by remember { mutableIntStateOf(0) }
         var packetsReceived by remember { mutableIntStateOf(0) }
         var lastPacketSize by remember { mutableIntStateOf(0) }
         var pendingSystemAudioReceiverIp by remember { mutableStateOf("") }
+        var discoveredReceivers by remember { mutableStateOf(emptyList<DiscoveredReceiver>()) }
+        var selectedReceiver by remember { mutableStateOf<DiscoveredReceiver?>(null) }
 
         var hasAudioPermission by remember {
             mutableStateOf(hasPermission(Manifest.permission.RECORD_AUDIO))
@@ -129,9 +154,9 @@ class MainActivity : ComponentActivity() {
         ) { granted ->
             hasAudioPermission = granted
             status = if (granted) {
-                "Microphone permission granted"
+                "Microphone permission granted."
             } else {
-                "Microphone permission denied"
+                "Microphone permission is missing. Microphone and system audio capture cannot start."
             }
         }
 
@@ -140,9 +165,9 @@ class MainActivity : ComponentActivity() {
         ) { granted ->
             hasNotificationPermission = granted
             status = if (granted) {
-                "Notification permission granted"
+                "Notification permission granted."
             } else {
-                "Notification permission denied"
+                "Notification permission is missing. Background streaming may not show a foreground notification."
             }
         }
 
@@ -172,7 +197,9 @@ class MainActivity : ComponentActivity() {
             receiverIp = receiverIp,
             status = status,
             permissions = permissions,
-            packets = packets
+            packets = packets,
+            discoveredReceivers = discoveredReceivers,
+            selectedReceiver = selectedReceiver
         )
 
         val launchers = ActivityLaunchers(
@@ -181,11 +208,67 @@ class MainActivity : ComponentActivity() {
             mediaProjectionLauncher = mediaProjectionLauncher
         )
 
-        val actions = DebugActions(
-            onReceiverIpChange = { receiverIp = it },
+        val inputActions = InputActions(
+            onReceiverIpChange = {
+                receiverIp = it
+                selectedReceiver = null
+            },
             onCopyIpClick = {
                 copyTextToClipboard(context, localIp)
-                status = "Copied IP: $localIp"
+                status = "Copied receiver IP: $localIp"
+            },
+            onSelectReceiverClick = { receiver ->
+                selectedReceiver = receiver
+                receiverIp = receiver.ip
+                status = "Selected receiver: ${receiver.displayName}"
+            }
+        )
+
+        val receiverActions = ReceiverActions(
+            onStartReceiverServiceClick = {
+                onStartReceiverServiceClicked(
+                    hasNotificationPermission = hasNotificationPermission,
+                    notificationPermissionLauncher = notificationPermissionLauncher,
+                    onStatusChange = { status = it },
+                    onCountersReset = {
+                        packetsSent = 0
+                        packetsReceived = 0
+                        lastPacketSize = 0
+                    }
+                )
+            },
+            onFindReceiversClick = {
+                onFindReceiversClicked(
+                    callbacks = DiscoveryCallbacks(
+                        onReceiversFound = { receivers ->
+                            discoveredReceivers = receivers
+                            selectedReceiver = null
+                            status = if (receivers.isEmpty()) {
+                                "No receivers found. Make sure both phones are on the same Wi-Fi or hotspot, then tap Receive Audio on the receiver."
+                            } else {
+                                "Found ${receivers.size} receiver(s). Select one below."
+                            }
+                        },
+                        onStatusChange = { status = it }
+                    )
+                )
+            }
+        )
+
+        val senderActions = SenderActions(
+            onStartSystemAudioSenderClick = {
+                onStartSystemAudioSenderClicked(
+                    request = StartSystemAudioRequest(
+                        receiverIp = receiverIp,
+                        hasAudioPermission = hasAudioPermission,
+                        hasNotificationPermission = hasNotificationPermission
+                    ),
+                    launchers = launchers,
+                    callbacks = SystemAudioCallbacks(
+                        onPendingReceiverIpChange = { pendingSystemAudioReceiverIp = it },
+                        onStatusChange = { status = it }
+                    )
+                )
             },
             onStartMicSenderClick = {
                 onStartMicSenderClicked(
@@ -202,7 +285,7 @@ class MainActivity : ComponentActivity() {
                         activity.runOnUiThread {
                             packetsSent++
                             lastPacketSize = size
-                            status = "Sending mic to ${receiverIp.trim()}:$port"
+                            status = "Sending microphone audio to ${receiverIp.trim()}:$port"
                         }
                     }
                 )
@@ -220,58 +303,45 @@ class MainActivity : ComponentActivity() {
                         activity.runOnUiThread {
                             packetsSent++
                             lastPacketSize = size
-                            status = "Sending test tone to ${receiverIp.trim()}:$port"
+                            status = "Sending 220 Hz test tone to ${receiverIp.trim()}:$port"
                         }
                     }
                 )
-            },
-            onStartSystemAudioSenderClick = {
-                onStartSystemAudioSenderClicked(
-                    request = StartSystemAudioRequest(
-                        receiverIp = receiverIp,
-                        hasAudioPermission = hasAudioPermission,
-                        hasNotificationPermission = hasNotificationPermission
-                    ),
-                    launchers = launchers,
-                    callbacks = SystemAudioCallbacks(
-                        onPendingReceiverIpChange = {
-                            pendingSystemAudioReceiverIp = it
-                        },
-                        onStatusChange = {
-                            status = it
-                        }
-                    )
-                )
-            },
-            onStartReceiverServiceClick = {
-                onStartReceiverServiceClicked(
+            }
+        )
+
+        val commonActions = CommonActions(
+            onRequestPermissionsAgainClick = {
+                onRequestPermissionsAgainClicked(
+                    hasAudioPermission = hasAudioPermission,
                     hasNotificationPermission = hasNotificationPermission,
-                    notificationPermissionLauncher = notificationPermissionLauncher,
-                    onStatusChange = { status = it },
-                    onCountersReset = {
-                        packetsSent = 0
-                        packetsReceived = 0
-                        lastPacketSize = 0
-                    }
+                    launchers = launchers,
+                    onStatusChange = { status = it }
                 )
             },
             onStopClick = {
                 stopLocalStreams()
                 AudioStreamingService.stop(this)
-                status = "Stopped"
+                status = "Stopped."
             }
         )
 
-        AudioShareDebugContent(
+        AudioShareContent(
             uiState = uiState,
-            actions = actions
+            inputActions = inputActions,
+            receiverActions = receiverActions,
+            senderActions = senderActions,
+            commonActions = commonActions
         )
     }
 
     @Composable
-    private fun AudioShareDebugContent(
+    private fun AudioShareContent(
         uiState: DebugUiState,
-        actions: DebugActions
+        inputActions: InputActions,
+        receiverActions: ReceiverActions,
+        senderActions: SenderActions,
+        commonActions: CommonActions
     ) {
         Column(
             modifier = Modifier
@@ -279,110 +349,174 @@ class MainActivity : ComponentActivity() {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            HeaderSection(uiState.localIp)
-
-            Button(
-                onClick = actions.onCopyIpClick,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Copy This Device IP")
-            }
-
-            ReceiverIpInput(
-                receiverIp = uiState.receiverIp,
-                onReceiverIpChange = actions.onReceiverIpChange
-            )
-
-            ActionButtons(actions)
-
-            HorizontalDivider()
-
-            DiagnosticsSection(
-                status = uiState.status,
-                permissions = uiState.permissions,
-                packets = uiState.packets
-            )
+            HeaderSection()
+            ReceiveAudioSection(uiState, inputActions, receiverActions)
+            SendLocalHotspotSection(uiState, inputActions, receiverActions)
+            AudioSourceSection(senderActions)
+            PermissionsSection(uiState.permissions, commonActions)
+            StatusSection(uiState.status, uiState.packets)
         }
     }
 
     @Composable
-    private fun HeaderSection(localIp: String) {
+    private fun HeaderSection() {
         Text(
-            text = "AudioShare Debug",
+            text = "AudioShare",
             style = MaterialTheme.typography.headlineSmall
         )
-
-        Text("This device IP: $localIp")
-        Text("If this device is Receiver, enter this IP on Sender.")
-        Text("Port: $port")
-        Text("Frame size: $frameSize bytes")
+        Text("Share audio locally over Wi-Fi or hotspot. No internet is required.")
     }
 
     @Composable
-    private fun ReceiverIpInput(
-        receiverIp: String,
-        onReceiverIpChange: (String) -> Unit
+    private fun ReceiveAudioSection(
+        uiState: DebugUiState,
+        inputActions: InputActions,
+        receiverActions: ReceiverActions
     ) {
+        SectionTitle("1. Receive Audio")
+        Text("Start this on the phone that will play sound. Use the shown IP on the sender.")
+        Text("Use this IP on sender: ${uiState.localIp}")
+        Text("Audio port: $port")
+
+        Button(
+            onClick = receiverActions.onStartReceiverServiceClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Receive Audio")
+        }
+
+        Button(
+            onClick = inputActions.onCopyIpClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Copy Receiver IP")
+        }
+
+        HorizontalDivider()
+    }
+
+    @Composable
+    private fun SendLocalHotspotSection(
+        uiState: DebugUiState,
+        inputActions: InputActions,
+        receiverActions: ReceiverActions
+    ) {
+        SectionTitle("2. Send Local / Hotspot")
+        Text("Use when both phones are on the same Wi-Fi or hotspot. No internet required.")
+
         OutlinedTextField(
-            value = receiverIp,
-            onValueChange = onReceiverIpChange,
+            value = uiState.receiverIp,
+            onValueChange = inputActions.onReceiverIpChange,
             label = { Text("Receiver IP") },
             placeholder = { Text("Example: 192.168.1.42") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
+
+        uiState.selectedReceiver?.let { receiver ->
+            Text("Selected receiver: ${receiver.displayName}")
+        }
+
+        Button(
+            onClick = receiverActions.onFindReceiversClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Find Receivers")
+        }
+
+        if (uiState.discoveredReceivers.isNotEmpty()) {
+            Text("Receivers found on this Wi-Fi/hotspot:")
+            uiState.discoveredReceivers.forEach { receiver ->
+                Button(
+                    onClick = { inputActions.onSelectReceiverClick(receiver) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(receiver.displayName)
+                }
+            }
+        }
+
+        HorizontalDivider()
     }
 
     @Composable
-    private fun ActionButtons(actions: DebugActions) {
+    private fun AudioSourceSection(senderActions: SenderActions) {
+        SectionTitle("3. Audio Source")
+
+        Text("System Audio")
+        Text("Captures app/system playback using Android screen/audio permission.")
         Button(
-            onClick = actions.onStartMicSenderClick,
+            onClick = senderActions.onStartSystemAudioSenderClick,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Start Mic Sender")
+            Text("Start System Audio")
+        }
+
+        Text("Microphone")
+        Text("Streams your microphone to the receiver.")
+        Button(
+            onClick = senderActions.onStartMicSenderClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Start Microphone")
+        }
+
+        Text("Test Tone")
+        Text("Sends a 220 Hz test tone to check the receiver and network.")
+        Button(
+            onClick = senderActions.onStartTestToneSenderClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Start Test Tone")
+        }
+
+        HorizontalDivider()
+    }
+
+    @Composable
+    private fun PermissionsSection(
+        permissions: PermissionUiState,
+        commonActions: CommonActions
+    ) {
+        SectionTitle("4. Permissions")
+        Text("Microphone: ${permissionLabel(permissions.hasAudioPermission)}")
+        Text("Notifications: ${permissionLabel(permissions.hasNotificationPermission)}")
+
+        Button(
+            onClick = commonActions.onRequestPermissionsAgainClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Request Permissions Again")
         }
 
         Button(
-            onClick = actions.onStartTestToneSenderClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Start Test Tone Sender")
-        }
-
-        Button(
-            onClick = actions.onStartSystemAudioSenderClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Start System Audio Sender")
-        }
-
-        Button(
-            onClick = actions.onStartReceiverServiceClick,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Start Receiver Service")
-        }
-
-        Button(
-            onClick = actions.onStopClick,
+            onClick = commonActions.onStopClick,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Stop")
         }
+
+        HorizontalDivider()
     }
 
     @Composable
-    private fun DiagnosticsSection(
+    private fun StatusSection(
         status: String,
-        permissions: PermissionUiState,
         packets: PacketUiState
     ) {
-        Text("Status: $status")
-        Text("Microphone permission: ${permissions.hasAudioPermission}")
-        Text("Notification permission: ${permissions.hasNotificationPermission}")
+        SectionTitle("5. Status")
+        Text(status)
         Text("Packets sent: ${packets.packetsSent}")
         Text("Packets received: ${packets.packetsReceived}")
         Text("Last packet size: ${packets.lastPacketSize} bytes")
+    }
+
+    @Composable
+    private fun SectionTitle(text: String) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium
+        )
     }
 
     private fun onStartMicSenderClicked(
@@ -397,12 +531,12 @@ class MainActivity : ComponentActivity() {
 
         if (!hasAudioPermission) {
             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            onStatusChange("Microphone permission required")
+            onStatusChange("Microphone permission required.")
             return
         }
 
         if (!isValidIpv4(ip)) {
-            onStatusChange("Invalid Receiver IP: $ip")
+            onStatusChange("Invalid receiver IP. Enter a local IP such as 192.168.x.x, 172.x.x.x, or 10.x.x.x.")
             return
         }
 
@@ -411,7 +545,6 @@ class MainActivity : ComponentActivity() {
             onCountersReset()
 
             val mic = MicrophoneCapture(applicationContext)
-
             val sender = UdpAudioSender(
                 hostIp = ip,
                 port = port,
@@ -424,15 +557,15 @@ class MainActivity : ComponentActivity() {
                 frameSize = frameSize,
                 onError = { error ->
                     runOnUiThread {
-                        onStatusChange("Sender error: ${error.message}")
+                        onStatusChange("Microphone sender error: ${error.message}")
                     }
                 }
             )
 
             streamManager?.start()
-            onStatusChange("Mic sender started")
-        } catch (e: Exception) {
-            onStatusChange("Sender failed: ${e.message}")
+            onStatusChange("Microphone sender started. Streaming directly to $ip:$port over local UDP.")
+        } catch (error: Exception) {
+            onStatusChange("Microphone sender failed: ${error.message}")
             stopLocalStreams()
         }
     }
@@ -446,7 +579,7 @@ class MainActivity : ComponentActivity() {
         val ip = receiverIp.trim()
 
         if (!isValidIpv4(ip)) {
-            onStatusChange("Invalid Receiver IP: $ip")
+            onStatusChange("Invalid receiver IP. Enter the receiver phone local IP first.")
             return
         }
 
@@ -471,9 +604,9 @@ class MainActivity : ComponentActivity() {
             )
 
             testToneStreamManager?.start()
-            onStatusChange("Test tone sender started")
-        } catch (e: Exception) {
-            onStatusChange("Test tone failed: ${e.message}")
+            onStatusChange("Test tone started. If the receiver plays a 220 Hz tone, local network audio works.")
+        } catch (error: Exception) {
+            onStatusChange("Test tone failed: ${error.message}")
             stopLocalStreams()
         }
     }
@@ -486,40 +619,32 @@ class MainActivity : ComponentActivity() {
         val ip = request.receiverIp.trim()
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            callbacks.onStatusChange("System audio capture requires Android 10+")
+            callbacks.onStatusChange("System audio capture requires Android 10 or newer.")
             return
         }
 
         if (!request.hasAudioPermission) {
             launchers.audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            callbacks.onStatusChange("Microphone/audio capture permission required")
+            callbacks.onStatusChange("Audio capture permission required.")
             return
         }
 
         if (requiresNotificationPermission(request.hasNotificationPermission)) {
-            launchers.notificationPermissionLauncher.launch(
-                Manifest.permission.POST_NOTIFICATIONS
-            )
-            callbacks.onStatusChange("Notification permission required")
+            launchers.notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            callbacks.onStatusChange("Notification permission required for background streaming.")
             return
         }
 
         if (!isValidIpv4(ip)) {
-            callbacks.onStatusChange("Invalid Receiver IP: $ip")
+            callbacks.onStatusChange("Invalid receiver IP. Enter a receiver IP or select a discovered receiver.")
             return
         }
 
         callbacks.onPendingReceiverIpChange(ip)
 
-        val projectionManager = getSystemService(
-            MediaProjectionManager::class.java
-        )
-
-        launchers.mediaProjectionLauncher.launch(
-            projectionManager.createScreenCaptureIntent()
-        )
-
-        callbacks.onStatusChange("Waiting for system audio permission")
+        val projectionManager = getSystemService(MediaProjectionManager::class.java)
+        launchers.mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        callbacks.onStatusChange("Waiting for Android screen/audio capture permission.")
     }
 
     private fun onStartReceiverServiceClicked(
@@ -530,7 +655,7 @@ class MainActivity : ComponentActivity() {
     ) {
         if (requiresNotificationPermission(hasNotificationPermission)) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            onStatusChange("Notification permission required")
+            onStatusChange("Notification permission required for background receiver playback.")
             return
         }
 
@@ -543,11 +668,52 @@ class MainActivity : ComponentActivity() {
                 port = port
             )
 
-            onStatusChange("Receiver service started on port $port")
-        } catch (e: Exception) {
-            onStatusChange("Receiver service failed: ${e.message}")
+            onStatusChange("Receive Audio started. Use this device IP on the sender. Discovery is also active.")
+        } catch (error: Exception) {
+            onStatusChange("Receiver failed to start: ${error.message}")
             stopLocalStreams()
         }
+    }
+
+    private fun onFindReceiversClicked(callbacks: DiscoveryCallbacks) {
+        discoveryClient?.stop()
+        callbacks.onStatusChange("Searching for receivers on the same Wi-Fi or hotspot...")
+
+        discoveryClient = UdpDiscoveryClient(
+            onReceiversFound = { receivers ->
+                runOnUiThread {
+                    callbacks.onReceiversFound(receivers)
+                }
+            },
+            onError = { error ->
+                runOnUiThread {
+                    callbacks.onStatusChange("Receiver discovery failed: ${error.message}")
+                }
+            }
+        )
+
+        discoveryClient?.findReceivers()
+    }
+
+    private fun onRequestPermissionsAgainClicked(
+        hasAudioPermission: Boolean,
+        hasNotificationPermission: Boolean,
+        launchers: ActivityLaunchers,
+        onStatusChange: (String) -> Unit
+    ) {
+        if (!hasAudioPermission) {
+            launchers.audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            onStatusChange("Requesting microphone permission...")
+            return
+        }
+
+        if (requiresNotificationPermission(hasNotificationPermission)) {
+            launchers.notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            onStatusChange("Requesting notification permission...")
+            return
+        }
+
+        onStatusChange("Required normal permissions are already granted.")
     }
 
     private fun handleMediaProjectionResult(
@@ -555,8 +721,8 @@ class MainActivity : ComponentActivity() {
         data: Intent?,
         receiverIp: String
     ): String {
-        if (resultCode != RESULT_OK || data == null) {
-            return "System audio permission denied"
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            return "System audio permission denied. Nothing was started."
         }
 
         AudioStreamingService.startSystemAudio(
@@ -567,7 +733,7 @@ class MainActivity : ComponentActivity() {
             projectionData = data
         )
 
-        return "System audio sender service started"
+        return "System audio capture started. If the selected app or browser blocks capture, try non-protected audio or another app."
     }
 
     private fun stopLocalStreams() {
@@ -597,20 +763,19 @@ class MainActivity : ComponentActivity() {
         hasNotificationPermission: Boolean
     ): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                !hasNotificationPermission
+            !hasNotificationPermission
+    }
+
+    private fun permissionLabel(granted: Boolean): String {
+        return if (granted) "Granted" else "Missing"
     }
 
     private fun copyTextToClipboard(
         context: Context,
         text: String
     ) {
-        val clipboardManager = context.getSystemService(
-            ClipboardManager::class.java
-        )
-
-        clipboardManager.setPrimaryClip(
-            ClipData.newPlainText("Device IP", text)
-        )
+        val clipboardManager = context.getSystemService(ClipboardManager::class.java)
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("Receiver IP", text))
     }
 
     private fun isValidIpv4(value: String): Boolean {
@@ -625,9 +790,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-
-        // Do not stop AudioStreamingService here.
-        // The service must continue when the app goes to background.
+        discoveryClient?.stop()
         stopLocalStreams()
     }
 }
