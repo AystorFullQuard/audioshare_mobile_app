@@ -15,8 +15,10 @@ import mme.corp.audioshare.R
 import mme.corp.audioshare.audio.SystemAudioStreamManager
 import mme.corp.audioshare.audio.capture.SystemAudioCapture
 import mme.corp.audioshare.audio.playback.AudioPlayer
+import mme.corp.audioshare.network.discovery.UdpDiscoveryResponder
 import mme.corp.audioshare.network.udp.UdpAudioReceiver
 import mme.corp.audioshare.network.udp.UdpAudioSender
+import mme.corp.audioshare.util.NetworkUtils
 
 class AudioStreamingService : Service() {
 
@@ -95,6 +97,7 @@ class AudioStreamingService : Service() {
 
     private var systemAudioStreamManager: SystemAudioStreamManager? = null
     private var receiver: UdpAudioReceiver? = null
+    private var discoveryResponder: UdpDiscoveryResponder? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -131,7 +134,7 @@ class AudioStreamingService : Service() {
 
     private fun handleStartReceiver(intent: Intent) {
         startForegroundNotification(
-            contentText = "Receiving audio stream",
+            contentText = "Receiving audio stream. Discovery is active.",
             mode = ForegroundMode.RECEIVER
         )
 
@@ -221,15 +224,32 @@ class AudioStreamingService : Service() {
             audioPlayer = player
         )
 
+        discoveryResponder = UdpDiscoveryResponder(
+            receiverName = friendlyReceiverName(),
+            audioPort = port,
+            getLocalIpAddress = { NetworkUtils.getLocalIpAddress() }
+        )
+
         receiver?.start()
+        discoveryResponder?.start()
+    }
+
+    private fun friendlyReceiverName(): String {
+        return Build.MODEL
+            ?.replace(";", " ")
+            ?.trim()
+            ?.ifBlank { "AudioShare Receiver" }
+            ?: "AudioShare Receiver"
     }
 
     private fun stopAll() {
         systemAudioStreamManager?.stop()
         receiver?.stop()
+        discoveryResponder?.stop()
 
         systemAudioStreamManager = null
         receiver = null
+        discoveryResponder = null
     }
 
     private fun startForegroundNotification(
@@ -254,7 +274,7 @@ class AudioStreamingService : Service() {
         return when (mode) {
             ForegroundMode.SYSTEM_AUDIO ->
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
 
             ForegroundMode.RECEIVER ->
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
