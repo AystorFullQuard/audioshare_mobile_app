@@ -98,7 +98,6 @@ class AudioStreamingService : Service() {
     private var systemAudioStreamManager: SystemAudioStreamManager? = null
     private var receiver: UdpAudioReceiver? = null
     private var discoveryResponder: UdpDiscoveryResponder? = null
-    private var currentForegroundMode = ForegroundMode.RECEIVER
 
     override fun onCreate() {
         super.onCreate()
@@ -199,11 +198,7 @@ class AudioStreamingService : Service() {
             capture = capture,
             sender = sender,
             frameSize = SystemAudioCapture.FRAME_SIZE_BYTES,
-            onCaptureStatus = { message ->
-                updateForegroundNotification(message)
-            },
-            onError = { error ->
-                updateForegroundNotification("System audio sharing stopped: ${error.message}")
+            onError = {
                 stopAll()
                 stopSelf()
             }
@@ -261,7 +256,6 @@ class AudioStreamingService : Service() {
         contentText: String,
         mode: ForegroundMode
     ) {
-        currentForegroundMode = mode
         val notification = buildNotification(contentText)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -273,14 +267,6 @@ class AudioStreamingService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-    }
-
-    private fun updateForegroundNotification(contentText: String) {
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.notify(
-            NOTIFICATION_ID,
-            buildNotification(contentText)
-        )
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
