@@ -10,6 +10,7 @@ class SystemAudioStreamManager(
     private val capture: SystemAudioCapture,
     private val sender: UdpAudioSender,
     private val frameSize: Int,
+    private val onCaptureStatus: (String) -> Unit = {},
     private val onError: (Throwable) -> Unit = {}
 ) {
 
@@ -17,6 +18,8 @@ class SystemAudioStreamManager(
     private var worker: Thread? = null
     private var frameCounter = 0
     private var silentFrameCounter = 0
+    private var activeFrameCounter = 0
+    private var lastStatus: String? = null
 
     fun start() {
         if (!running.compareAndSet(false, true)) {
@@ -25,6 +28,7 @@ class SystemAudioStreamManager(
 
         try {
             capture.start()
+            publishStatus("System audio capture started. Play audio in a supported app.")
         } catch (error: Throwable) {
             running.set(false)
             sender.close()
@@ -40,13 +44,12 @@ class SystemAudioStreamManager(
                     val read = capture.read(buffer)
 
                     if (read > 0) {
-                        logCaptureLevel(buffer, read)
+                        processCaptureLevel(buffer, read)
                         sender.send(buffer, read)
                     } else {
-                        Log.w(
-                            "SystemAudioStreamManager",
-                            "System audio capture started, but no audio frames were read: $read"
-                        )
+                        val message = "System audio capture is running, but no audio frames are being read."
+                        Log.w("SystemAudioStreamManager", "$message read=$read")
+                        publishStatus(message)
                     }
                 }
             } catch (error: Throwable) {
@@ -69,28 +72,49 @@ class SystemAudioStreamManager(
         worker = null
     }
 
-    private fun logCaptureLevel(buffer: ByteArray, size: Int) {
+    private fun processCaptureLevel(buffer: ByteArray, size: Int) {
         frameCounter++
 
         val peak = calculatePeakPcm16Le(buffer, size)
         if (peak <= SILENCE_PEAK_THRESHOLD) {
             silentFrameCounter++
+        } else {
+            activeFrameCounter++
         }
 
-        if (frameCounter % LOG_EVERY_N_FRAMES == 0) {
-            Log.i(
-                "SystemAudioStreamManager",
-                "System audio frames=$frameCounter silentFrames=$silentFrameCounter lastPeak=$peak"
-            )
-
-            if (silentFrameCounter >= LOG_EVERY_N_FRAMES) {
-                Log.w(
-                    "SystemAudioStreamManager",
-                    "System audio capture is running but frames are silent. The source app/browser/content may block playback capture."
-                )
-                silentFrameCounter = 0
-            }
+        if (frameCounter % LOG_EVERY_N_FRAMES != 0) {
+            return
         }
+
+        Log.i(
+            "SystemAudioStreamManager",
+            "System audio frames=$frameCounter activeFrames=$activeFrameCounter " +
+                "silentFrames=$silentFrameCounter lastPeak=$peak"
+        )
+
+        if (activeFrameCounter > 0) {
+            publishStatus("System audio is being captured and sent.")
+            activeFrameCounter = 0
+            silentFrameCounter = 0
+            return
+        }
+
+        if (silentFrameCounter >= LOG_EVERY_N_FRAMES) {
+            val message = "System audio capture is running, but the source is silent. " +
+                "The browser, page, media, or protected content may block playback capture."
+            Log.w("SystemAudioStreamManager", message)
+            publishStatus(message)
+            silentFrameCounter = 0
+        }
+    }
+
+    private fun publishStatus(message: String) {
+        if (message == lastStatus) {
+            return
+        }
+
+        lastStatus = message
+        onCaptureStatus(message)
     }
 
     private fun calculatePeakPcm16Le(buffer: ByteArray, size: Int): Int {
