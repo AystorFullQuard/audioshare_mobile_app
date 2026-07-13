@@ -26,16 +26,16 @@ data class MeResponse(
     val avatarURL: String? = null,
     val emailVerified: Boolean,
     val phoneVerified: Boolean,
-    val settings: UserSettingsResponse
+    val settings: UserSettingsResponse? = null
 )
 
 @Serializable
 data class UserSettingsResponse(
-    val theme: String,
+    val theme: String? = null,
     val allowDiscovery: Boolean,
     val showLastSeen: Boolean,
     val notificationsEnabled: Boolean,
-    val preferredAudioQuality: AudioQuality
+    val preferredAudioQuality: AudioQuality? = null
 )
 
 @Serializable

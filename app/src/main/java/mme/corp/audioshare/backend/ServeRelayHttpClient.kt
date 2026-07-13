@@ -81,11 +81,22 @@ private class BearerTokenInterceptor(
     private val sessionStore: SessionStore
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+        val originalRequest = chain.request()
+        val path = originalRequest.url.encodedPath
+
+        if (path in PUBLIC_AUTH_PATHS) {
+            return chain.proceed(
+                originalRequest.newBuilder()
+                    .removeHeader(AUTHORIZATION_HEADER)
+                    .build()
+            )
+        }
+
         val token = sessionStore.currentAccessToken()
         val request = if (token.isNullOrBlank()) {
-            chain.request()
+            originalRequest
         } else {
-            chain.request()
+            originalRequest
                 .newBuilder()
                 .header(AUTHORIZATION_HEADER, "Bearer $token")
                 .build()
@@ -96,5 +107,11 @@ private class BearerTokenInterceptor(
 
     private companion object {
         const val AUTHORIZATION_HEADER = "Authorization"
+        val PUBLIC_AUTH_PATHS = setOf(
+            "/api/v1/auth/dev-register",
+            "/api/v1/auth/dev-login",
+            "/api/v1/auth/login",
+            "/api/v1/auth/refresh"
+        )
     }
 }

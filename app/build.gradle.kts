@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val serveRelayBaseUrl = providers.gradleProperty("serverelayBaseUrl")
+    .orElse("http://10.0.2.2:8090/")
+
 android {
     namespace = "mme.corp.audioshare"
     compileSdk {
@@ -20,6 +23,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "SERVERELAY_BASE_URL",
+            "\"${serveRelayBaseUrl.get()}\""
+        )
     }
 
     buildTypes {
@@ -37,6 +45,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

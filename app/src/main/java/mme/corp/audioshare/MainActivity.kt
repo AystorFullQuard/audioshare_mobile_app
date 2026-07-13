@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import mme.corp.audioshare.audio.AudioStreamManager
 import mme.corp.audioshare.audio.TestToneStreamManager
 import mme.corp.audioshare.audio.capture.MicrophoneCapture
@@ -44,9 +46,20 @@ import mme.corp.audioshare.network.discovery.DiscoveredReceiver
 import mme.corp.audioshare.network.discovery.UdpDiscoveryClient
 import mme.corp.audioshare.network.udp.UdpAudioSender
 import mme.corp.audioshare.service.AudioStreamingService
+import mme.corp.audioshare.session.AndroidClientInfoProvider
+import mme.corp.audioshare.session.BackendSessionUiState
+import mme.corp.audioshare.session.BackendSessionViewModel
 import mme.corp.audioshare.util.NetworkUtils
 
 class MainActivity : ComponentActivity() {
+
+    private val backendSessionViewModel: BackendSessionViewModel by viewModels {
+        val app = application as AudioShareApplication
+        BackendSessionViewModel.factory(
+            repository = app.container.backendSessionRepository,
+            startupRequest = AndroidClientInfoProvider(applicationContext).get()
+        )
+    }
 
     private val port = 50005
     private val frameSize = MicrophoneCapture.FRAME_SIZE_BYTES
@@ -73,7 +86,8 @@ class MainActivity : ComponentActivity() {
         val permissions: PermissionUiState,
         val packets: PacketUiState,
         val discoveredReceivers: List<DiscoveredReceiver>,
-        val selectedReceiver: DiscoveredReceiver?
+        val selectedReceiver: DiscoveredReceiver?,
+        val backendSession: BackendSessionUiState
     )
 
     private data class InputActions(
@@ -91,6 +105,10 @@ class MainActivity : ComponentActivity() {
         val onStartSystemAudioSenderClick: () -> Unit,
         val onStartMicSenderClick: () -> Unit,
         val onStartTestToneSenderClick: () -> Unit
+    )
+
+    private data class BackendActions(
+        val onRetryClick: () -> Unit
     )
 
     private data class CommonActions(
@@ -133,6 +151,7 @@ class MainActivity : ComponentActivity() {
         val activity = this
         val context = LocalContext.current
         val localIp = remember { NetworkUtils.getLocalIpAddress() }
+        val backendSession by backendSessionViewModel.uiState.collectAsStateWithLifecycle()
 
         var receiverIp by remember { mutableStateOf("") }
         var status by remember { mutableStateOf("Ready. Start Receive Audio on the playback phone.") }
@@ -201,7 +220,8 @@ class MainActivity : ComponentActivity() {
             permissions = permissions,
             packets = packets,
             discoveredReceivers = discoveredReceivers,
-            selectedReceiver = selectedReceiver
+            selectedReceiver = selectedReceiver,
+            backendSession = backendSession
         )
 
         val launchers = ActivityLaunchers(
@@ -312,6 +332,10 @@ class MainActivity : ComponentActivity() {
             }
         )
 
+        val backendActions = BackendActions(
+            onRetryClick = backendSessionViewModel::retry
+        )
+
         val commonActions = CommonActions(
             onRequestPermissionsAgainClick = {
                 onRequestPermissionsAgainClicked(
@@ -333,6 +357,7 @@ class MainActivity : ComponentActivity() {
             inputActions = inputActions,
             receiverActions = receiverActions,
             senderActions = senderActions,
+            backendActions = backendActions,
             commonActions = commonActions
         )
     }
@@ -343,6 +368,7 @@ class MainActivity : ComponentActivity() {
         inputActions: InputActions,
         receiverActions: ReceiverActions,
         senderActions: SenderActions,
+        backendActions: BackendActions,
         commonActions: CommonActions
     ) {
         val scrollState = rememberScrollState()
@@ -355,6 +381,7 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             HeaderSection()
+            BackendSessionSection(uiState.backendSession, backendActions)
             ReceiveAudioSection(uiState, inputActions, receiverActions)
             SendLocalHotspotSection(uiState, inputActions, receiverActions)
             AudioSourceSection(senderActions)
@@ -370,6 +397,34 @@ class MainActivity : ComponentActivity() {
             style = MaterialTheme.typography.headlineSmall
         )
         Text("Share audio locally over Wi-Fi or hotspot. No internet is required.")
+    }
+
+
+    @Composable
+    private fun BackendSessionSection(
+        state: BackendSessionUiState,
+        actions: BackendActions
+    ) {
+        SectionTitle("ServeRelay backend")
+        Text("Status: ${state.status}")
+        state.userId?.let { Text("User ID: $it") }
+        state.deviceId?.let { Text("Device ID: $it") }
+        state.deviceName?.let { Text("Device: $it") }
+        state.lastHeartbeatAt?.let { Text("Last heartbeat: $it") }
+        if (state.isConnected) {
+            Text("Registered devices: ${state.deviceCount}")
+        }
+        state.error?.let { Text("Error: $it") }
+
+        Button(
+            onClick = actions.onRetryClick,
+            enabled = !state.isLoading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (state.isLoading) "Connecting..." else "Retry ServeRelay")
+        }
+
+        HorizontalDivider()
     }
 
     @Composable
