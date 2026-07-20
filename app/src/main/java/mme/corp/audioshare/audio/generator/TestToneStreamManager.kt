@@ -1,6 +1,6 @@
-package mme.corp.audioshare.audio
+package mme.corp.audioshare.audio.generator
 
-import mme.corp.audioshare.network.udp.UdpAudioSender
+import mme.corp.audioshare.audio.transport.UdpAudioSender
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 

@@ -1,7 +1,8 @@
-package mme.corp.audioshare.audio
+package mme.corp.audioshare.audio.manager
+
 import android.util.Log
 import mme.corp.audioshare.audio.capture.MicrophoneCapture
-import mme.corp.audioshare.network.udp.UdpAudioSender
+import mme.corp.audioshare.audio.transport.UdpAudioSender
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 

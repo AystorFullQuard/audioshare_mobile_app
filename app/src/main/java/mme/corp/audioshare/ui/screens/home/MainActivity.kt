@@ -1,4 +1,4 @@
-package mme.corp.audioshare
+package mme.corp.audioshare.ui.screens.home
 
 import android.Manifest
 import android.app.Activity
@@ -28,23 +28,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import mme.corp.audioshare.audio.AudioStreamManager
-import mme.corp.audioshare.audio.TestToneStreamManager
 import mme.corp.audioshare.audio.capture.MicrophoneCapture
+import mme.corp.audioshare.audio.generator.TestToneStreamManager
+import mme.corp.audioshare.audio.manager.AudioStreamManager
+import mme.corp.audioshare.audio.service.AudioStreamingService
+import mme.corp.audioshare.audio.transport.UdpAudioSender
 import mme.corp.audioshare.network.discovery.DiscoveredReceiver
 import mme.corp.audioshare.network.discovery.UdpDiscoveryClient
-import mme.corp.audioshare.network.udp.UdpAudioSender
-import mme.corp.audioshare.service.AudioStreamingService
 import mme.corp.audioshare.util.NetworkUtils
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 
 class MainActivity : ComponentActivity() {
 

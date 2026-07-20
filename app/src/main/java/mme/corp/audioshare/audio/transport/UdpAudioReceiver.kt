@@ -1,4 +1,4 @@
-package mme.corp.audioshare.network.udp
+package mme.corp.audioshare.audio.transport
 
 import mme.corp.audioshare.audio.playback.AudioPlayer
 import java.net.DatagramPacket

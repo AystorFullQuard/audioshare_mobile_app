@@ -1,4 +1,4 @@
-package mme.corp.audioshare.audio
+package mme.corp.audioshare.audio.generator
 
 import kotlin.math.PI
 import kotlin.math.sin
