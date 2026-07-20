@@ -1,4 +1,4 @@
-package mme.corp.audioshare
+package mme.corp.audioshare.ui.screens.home
 
 import android.Manifest
 import android.app.Activity
@@ -37,13 +37,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import mme.corp.audioshare.audio.AudioStreamManager
-import mme.corp.audioshare.audio.TestToneStreamManager
 import mme.corp.audioshare.audio.capture.MicrophoneCapture
+import mme.corp.audioshare.audio.generator.TestToneStreamManager
+import mme.corp.audioshare.audio.manager.AudioStreamManager
+import mme.corp.audioshare.audio.service.AudioStreamingService
+import mme.corp.audioshare.audio.transport.UdpAudioSender
 import mme.corp.audioshare.network.discovery.DiscoveredReceiver
 import mme.corp.audioshare.network.discovery.UdpDiscoveryClient
-import mme.corp.audioshare.network.udp.UdpAudioSender
-import mme.corp.audioshare.service.AudioStreamingService
 import mme.corp.audioshare.util.NetworkUtils
 
 class MainActivity : ComponentActivity() {

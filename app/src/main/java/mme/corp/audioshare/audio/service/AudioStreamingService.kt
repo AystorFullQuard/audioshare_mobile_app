@@ -1,4 +1,4 @@
-package mme.corp.audioshare.service
+package mme.corp.audioshare.audio.service
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -12,12 +12,12 @@ import android.os.IBinder
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import mme.corp.audioshare.R
-import mme.corp.audioshare.audio.SystemAudioStreamManager
 import mme.corp.audioshare.audio.capture.SystemAudioCapture
+import mme.corp.audioshare.audio.manager.SystemAudioStreamManager
 import mme.corp.audioshare.audio.playback.AudioPlayer
+import mme.corp.audioshare.audio.transport.UdpAudioReceiver
+import mme.corp.audioshare.audio.transport.UdpAudioSender
 import mme.corp.audioshare.network.discovery.UdpDiscoveryResponder
-import mme.corp.audioshare.network.udp.UdpAudioReceiver
-import mme.corp.audioshare.network.udp.UdpAudioSender
 import mme.corp.audioshare.util.NetworkUtils
 
 class AudioStreamingService : Service() {

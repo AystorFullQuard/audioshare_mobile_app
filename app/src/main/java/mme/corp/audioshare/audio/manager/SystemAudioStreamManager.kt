@@ -1,10 +1,11 @@
-package mme.corp.audioshare.audio
+package mme.corp.audioshare.audio.manager
 
 import android.util.Log
 import mme.corp.audioshare.audio.capture.SystemAudioCapture
-import mme.corp.audioshare.network.udp.UdpAudioSender
+import mme.corp.audioshare.audio.transport.UdpAudioSender
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 class SystemAudioStreamManager(
     private val capture: SystemAudioCapture,
@@ -101,7 +102,7 @@ class SystemAudioStreamManager(
             val low = buffer[index].toInt() and 0xFF
             val high = buffer[index + 1].toInt()
             val sample = ((high shl 8) or low).toShort().toInt()
-            val absolute = kotlin.math.abs(sample)
+            val absolute = abs(sample)
 
             if (absolute > peak) {
                 peak = absolute
