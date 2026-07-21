@@ -1,12 +1,16 @@
 package mme.corp.audioshare
 
 import android.app.Application
+import mme.corp.audioshare.data.storage.SessionManager
+import mme.corp.audioshare.di.AppContainer
 import mme.corp.audioshare.network.ApiClient
-import mme.corp.audioshare.storage.SessionManager
 
 class AudioShareApplication : Application() {
 
     lateinit var sessionManager: SessionManager
+        private set
+
+    lateinit var container: AppContainer
         private set
 
     override fun onCreate() {
@@ -15,5 +19,7 @@ class AudioShareApplication : Application() {
         sessionManager = SessionManager(this)
 
         ApiClient.initialize(sessionManager)
+
+        container = AppContainer(sessionManager)
     }
 }

@@ -1,9 +1,9 @@
 package mme.corp.audioshare.network
 
 import mme.corp.audioshare.BuildConfig
-import mme.corp.audioshare.network.retrofit.AuthInterceptor
+import mme.corp.audioshare.network.interceptor.AuthInterceptor
 import mme.corp.audioshare.network.retrofit.NetworkConfig
-import mme.corp.audioshare.storage.SessionManager
+import mme.corp.audioshare.data.storage.SessionManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit

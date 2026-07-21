@@ -1,4 +1,4 @@
-package mme.corp.audioshare.network.dto
+package mme.corp.audioshare.data.dto
 
 data class LoginResponse(
     val userId: String,
