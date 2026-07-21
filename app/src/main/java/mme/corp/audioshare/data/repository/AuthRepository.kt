@@ -42,4 +42,27 @@ class AuthRepository(
 
         return Result.success(body)
     }
+
+    suspend fun logout(): Result<Unit> {
+
+        return try {
+
+            // Notify backend (ignore response if session already expired)
+            runCatching {
+                authApi.logout()
+            }
+
+            // Always clear local session
+            sessionManager.clearSession()
+
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+
+            // Still clear local session to force logout
+            sessionManager.clearSession()
+
+            Result.failure(e)
+        }
+    }
 }

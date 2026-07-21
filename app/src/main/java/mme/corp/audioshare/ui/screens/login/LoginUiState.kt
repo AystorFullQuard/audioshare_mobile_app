@@ -1,4 +1,4 @@
-package mme.corp.audioshare.ui.login
+package mme.corp.audioshare.ui.screens.login
 
 data class LoginUiState(
     val login: String = "",

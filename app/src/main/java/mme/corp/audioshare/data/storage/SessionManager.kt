@@ -109,4 +109,10 @@ class SessionManager(
     suspend fun getAccessToken(): String? {
         return accessToken.first()
     }
+
+    suspend fun hasActiveSession(): Boolean {
+        return accessToken.first()
+            ?.isNotBlank()
+            ?: false
+    }
 }
