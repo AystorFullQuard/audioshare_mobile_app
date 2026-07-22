@@ -1,5 +1,6 @@
 package mme.corp.audioshare.network
 
+import android.util.Log
 import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.network.interceptor.AuthInterceptor
 import mme.corp.audioshare.network.retrofit.NetworkConfig
@@ -12,10 +13,11 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
+    private const val TAG = "ApiClient"
     private var retrofit: Retrofit? = null
 
     fun initialize(sessionManager: SessionManager) {
-
+        Log.d(TAG, "Initializing Retrofit")
         val logging = HttpLoggingInterceptor().apply {
             level =
                 if (BuildConfig.DEBUG)

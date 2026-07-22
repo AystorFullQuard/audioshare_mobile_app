@@ -1,5 +1,6 @@
 package mme.corp.audioshare.ui.screens.login
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -29,14 +31,21 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import mme.corp.audioshare.AudioShareApplication
 
+private const val TAG = "LoginScreen"
+
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit
 ) {
 
+    Log.d(TAG, "==========================================")
+    Log.d(TAG, "LoginScreen composed")
+
     val application =
         LocalContext.current.applicationContext
                 as AudioShareApplication
+
+    Log.d(TAG, "Application acquired")
 
     val viewModel: LoginViewModel = viewModel(
         factory = LoginViewModel.Factory(
@@ -44,11 +53,36 @@ fun LoginScreen(
         )
     )
 
+    Log.d(TAG, "ViewModel acquired")
+
     val uiState by viewModel.uiState.collectAsState()
 
+    Log.d(
+        TAG,
+        "UI State -> loading=${uiState.isLoading}, loggedIn=${uiState.isLoggedIn}, error=${uiState.error}"
+    )
+
     LaunchedEffect(uiState.isLoggedIn) {
+
+        Log.d(
+            TAG,
+            "LaunchedEffect fired. isLoggedIn=${uiState.isLoggedIn}"
+        )
+
         if (uiState.isLoggedIn) {
-            onLoginSuccess()
+
+            Log.i(TAG, "Calling onLoginSuccess()")
+
+            try {
+
+                onLoginSuccess()
+
+                Log.i(TAG, "onLoginSuccess() finished")
+
+            } catch (e: Exception) {
+
+                Log.e(TAG, "onLoginSuccess() CRASHED", e)
+            }
         }
     }
 
@@ -73,7 +107,12 @@ fun LoginScreen(
 
             OutlinedTextField(
                 value = uiState.login,
-                onValueChange = viewModel::updateLogin,
+                onValueChange = {
+
+                    Log.d(TAG, "Login changed -> $it")
+
+                    viewModel.updateLogin(it)
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = {
@@ -89,7 +128,15 @@ fun LoginScreen(
 
             OutlinedTextField(
                 value = uiState.password,
-                onValueChange = viewModel::updatePassword,
+                onValueChange = {
+
+                    Log.d(
+                        TAG,
+                        "Password changed (length=${it.length})"
+                    )
+
+                    viewModel.updatePassword(it)
+                },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = {
@@ -103,6 +150,8 @@ fun LoginScreen(
             )
 
             uiState.error?.let {
+
+                Log.w(TAG, "Displaying error: $it")
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -118,11 +167,16 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isLoading,
                 onClick = {
+
+                    Log.i(TAG, "Login button clicked")
+
                     viewModel.login()
                 }
             ) {
 
                 if (uiState.isLoading) {
+
+                    Log.d(TAG, "Showing loading indicator")
 
                     CircularProgressIndicator()
 
@@ -136,13 +190,15 @@ fun LoginScreen(
 
             TextButton(
                 onClick = {
-                    // Register later
+
+                    Log.d(TAG, "Create account clicked")
                 }
             ) {
 
                 Text("Create account")
-
             }
         }
     }
+
+    Log.d(TAG, "LoginScreen composition finished")
 }
