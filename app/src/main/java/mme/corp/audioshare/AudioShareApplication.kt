@@ -3,7 +3,7 @@ package mme.corp.audioshare
 import android.app.Application
 import mme.corp.audioshare.data.storage.SessionManager
 import mme.corp.audioshare.di.AppContainer
-import mme.corp.audioshare.network.ApiClient
+import mme.corp.audioshare.network.retrofit.ApiClient
 
 class AudioShareApplication : Application() {
 

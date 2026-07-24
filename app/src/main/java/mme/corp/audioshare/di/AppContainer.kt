@@ -3,11 +3,11 @@ package mme.corp.audioshare.di
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.data.storage.SessionManager
-import mme.corp.audioshare.network.ApiClient
+import mme.corp.audioshare.network.retrofit.ApiClient
 
 
 class AppContainer(
-    sessionManager: SessionManager
+    val sessionManager: SessionManager
 ) {
 
     /*

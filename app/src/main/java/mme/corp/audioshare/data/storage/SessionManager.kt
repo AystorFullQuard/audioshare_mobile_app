@@ -229,6 +229,75 @@ class SessionManager(
         }
     }
 
+    suspend fun getSession(): Session {
+        Log.d(TAG, "getSession()")
+
+        val preferences = context.dataStore.data.first()
+
+        return Session(
+
+            accessToken = preferences[ACCESS_TOKEN],
+
+            refreshToken = preferences[REFRESH_TOKEN],
+
+            userId = preferences[USER_ID],
+
+            sessionId = preferences[SESSION_ID]
+        )
+    }
+
+    suspend fun getRefreshToken(): String? {
+        Log.d(TAG, "getRefreshToken()")
+
+        return try {
+            val token = refreshToken.first()
+
+            Log.d(
+                TAG,
+                "Refresh token exists=${!token.isNullOrBlank()}"
+            )
+
+            token
+        } catch (e: Exception) {
+
+            Log.e(TAG, "getRefreshToken() FAILED", e)
+
+            null
+        }
+    }
+
+    suspend fun updateTokens(
+        accessToken: String,
+        refreshToken: String
+    ) {
+
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "updateTokens() START")
+        Log.d(TAG, "AccessToken length=${accessToken.length}")
+        Log.d(TAG, "RefreshToken length=${refreshToken.length}")
+
+        try {
+
+            context.dataStore.edit { preferences ->
+
+                preferences[ACCESS_TOKEN] = accessToken
+                preferences[REFRESH_TOKEN] = refreshToken
+            }
+
+            Log.i(TAG, "Tokens updated successfully")
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "updateTokens() FAILED", e)
+            throw e
+
+        } finally {
+
+            Log.d(TAG, "updateTokens() END")
+            Log.d(TAG, "==========================================")
+        }
+    }
+
     suspend fun hasActiveSession(): Boolean {
 
         Log.d(TAG, "==========================================")

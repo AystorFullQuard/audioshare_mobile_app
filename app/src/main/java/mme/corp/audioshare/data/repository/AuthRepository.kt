@@ -6,6 +6,8 @@ import mme.corp.audioshare.data.dto.LoginRequest
 import mme.corp.audioshare.data.dto.LoginResponse
 import mme.corp.audioshare.data.storage.SessionManager
 import com.google.gson.Gson
+import mme.corp.audioshare.data.dto.RefreshRequest
+import mme.corp.audioshare.data.dto.RefreshResponse
 import mme.corp.audioshare.exception.ApiErrorResponse
 import mme.corp.audioshare.exception.ApiException
 
@@ -146,6 +148,121 @@ class AuthRepository(
             Log.e(TAG, "Type    : ${e::class.java.simpleName}")
             Log.e(TAG, "Message : ${e.message}", e)
             Log.e(TAG, "==========================================")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun refresh(): Result<RefreshResponse> {
+
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "REFRESH REQUEST START")
+
+        return try {
+
+            Log.d(TAG, "Reading stored refresh token")
+
+            val refreshToken = sessionManager.getRefreshToken()
+
+            if (refreshToken.isNullOrBlank()) {
+
+                Log.e(TAG, "No refresh token stored")
+
+                return Result.failure(
+                    Exception("Refresh token not found")
+                )
+            }
+
+            Log.d(TAG, "Creating RefreshRequest")
+
+            val request = RefreshRequest(
+                refreshToken = refreshToken
+            )
+
+            Log.d(TAG, "Calling authApi.refresh()")
+
+            val response = authApi.refresh(request)
+
+            Log.d(TAG, "HTTP response received")
+            Log.d(TAG, "HTTP Code = ${response.code()}")
+            Log.d(TAG, "HTTP Message = ${response.message()}")
+            Log.d(TAG, "Successful = ${response.isSuccessful}")
+
+            if (!response.isSuccessful) {
+
+                Log.e(TAG, "==========================================")
+                Log.e(TAG, "REFRESH FAILED")
+
+                val rawError = try {
+                    response.errorBody()?.string()
+                } catch (e: Exception) {
+                    null
+                }
+
+                val apiError = try {
+
+                    rawError?.let {
+                        gson.fromJson(it, ApiErrorResponse::class.java)
+                    }
+
+                } catch (e: Exception) {
+
+                    null
+                }
+
+                if (apiError != null) {
+
+                    Log.e(TAG, apiError.debugString())
+
+                    return Result.failure(
+                        ApiException(
+                            httpCode = response.code(),
+                            apiError = apiError
+                        )
+                    )
+                }
+
+                return Result.failure(
+                    Exception(
+                        rawError ?: "HTTP ${response.code()} ${response.message()}"
+                    )
+                )
+            }
+
+            val body = response.body()
+
+            if (body == null) {
+
+                Log.e(TAG, "Response body is NULL")
+
+                return Result.failure(
+                    Exception("Empty response")
+                )
+            }
+
+            Log.d(TAG, "Updating stored tokens")
+
+            sessionManager.saveSession(
+                accessToken = body.accessToken,
+                refreshToken = body.refreshToken,
+                userId = body.userId,
+                sessionId = body.sessionId
+            )
+
+            Log.i(TAG, "Refresh successful")
+            Log.d(TAG, "AccessToken  : ${body.accessToken.take(20)}...")
+            Log.d(TAG, "RefreshToken : ${body.refreshToken.take(20)}...")
+            Log.d(TAG, "==========================================")
+
+            Result.success(body)
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "==========================================")
+            Log.e(TAG, "REFRESH EXCEPTION")
+            Log.e(TAG, "Type    : ${e::class.java.simpleName}")
+            Log.e(TAG, "Message : ${e.message}", e)
+            Log.e(TAG, "==========================================")
+
             Result.failure(e)
         }
     }

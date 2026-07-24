@@ -1,9 +1,8 @@
-package mme.corp.audioshare.network
+package mme.corp.audioshare.network.retrofit
 
 import android.util.Log
 import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.network.interceptor.AuthInterceptor
-import mme.corp.audioshare.network.retrofit.NetworkConfig
 import mme.corp.audioshare.data.storage.SessionManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
