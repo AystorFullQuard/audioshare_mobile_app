@@ -8,16 +8,26 @@ import mme.corp.audioshare.data.dto.bootstrap.Platform
 import mme.corp.audioshare.data.storage.DeviceIdStore
 import mme.corp.audioshare.network.retrofit.executeApiCall
 
-class BootstrapRepository(
-    private val bootstrapApi: BootstrapApi,
-    private val deviceIdStore: DeviceIdStore
-) {
+interface DeviceBootstrapper {
 
     suspend fun bootstrap(
         displayName: String?,
         deviceName: String?,
         appVersion: String?,
         platform: Platform = Platform.ANDROID
+    ): Result<BootstrapResponse>
+}
+
+class BootstrapRepository(
+    private val bootstrapApi: BootstrapApi,
+    private val deviceIdStore: DeviceIdStore
+) : DeviceBootstrapper {
+
+    override suspend fun bootstrap(
+        displayName: String?,
+        deviceName: String?,
+        appVersion: String?,
+        platform: Platform
     ): Result<BootstrapResponse> {
         val existingDeviceId = try {
             deviceIdStore.getDeviceId()

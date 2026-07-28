@@ -9,13 +9,20 @@ import mme.corp.audioshare.data.storage.DeviceIdStore
 import mme.corp.audioshare.exception.DeviceBootstrapRequiredException
 import mme.corp.audioshare.network.retrofit.executeApiCall
 
-class PresenceRepository(
-    private val presenceApi: PresenceApi,
-    private val deviceIdStore: DeviceIdStore
-) {
+interface PresenceHeartbeatClient {
 
     suspend fun heartbeat(
         state: PresenceState? = null
+    ): Result<PresenceSnapshot>
+}
+
+class PresenceRepository(
+    private val presenceApi: PresenceApi,
+    private val deviceIdStore: DeviceIdStore
+) : PresenceHeartbeatClient {
+
+    override suspend fun heartbeat(
+        state: PresenceState?
     ): Result<PresenceSnapshot> {
         val deviceId = try {
             deviceIdStore.getDeviceId()

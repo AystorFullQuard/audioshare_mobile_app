@@ -35,7 +35,8 @@ fun HomeScreen() {
 
         HomeViewModel(
             authRepository = application.container.authRepository,
-            sessionManager = application.sessionManager
+            sessionManager = application.sessionManager,
+            presenceRuntimeController = application.container.presenceLifecycleManager
         )
 
     }

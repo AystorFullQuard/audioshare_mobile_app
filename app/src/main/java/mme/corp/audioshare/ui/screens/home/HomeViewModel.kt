@@ -9,12 +9,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.data.storage.SessionManager
+import mme.corp.audioshare.presence.PresenceRuntimeController
 
 class HomeViewModel(
 
     private val authRepository: AuthRepository,
 
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+
+    private val presenceRuntimeController: PresenceRuntimeController =
+        PresenceRuntimeController.NO_OP
 ) : ViewModel() {
 
     private val _uiState =
@@ -66,6 +70,7 @@ class HomeViewModel(
 
             try {
 
+                presenceRuntimeController.stop()
                 sessionManager.clearSession()
 
                 loadSession()

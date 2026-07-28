@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.androidx.datastore.core)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.process)
     implementation("androidx.navigation:navigation-compose:2.9.3")
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

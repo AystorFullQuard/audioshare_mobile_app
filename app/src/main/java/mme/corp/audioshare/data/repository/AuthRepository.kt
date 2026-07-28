@@ -10,10 +10,13 @@ import mme.corp.audioshare.data.dto.RefreshRequest
 import mme.corp.audioshare.data.dto.RefreshResponse
 import mme.corp.audioshare.exception.ApiErrorResponse
 import mme.corp.audioshare.exception.ApiException
+import mme.corp.audioshare.presence.PresenceRuntimeController
 
 class AuthRepository(
     private val authApi: AuthApi,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val presenceRuntimeController: PresenceRuntimeController =
+        PresenceRuntimeController.NO_OP
 ) {
 
     private val gson = Gson()
@@ -271,6 +274,8 @@ class AuthRepository(
 
         Log.d(TAG, "==========================================")
         Log.d(TAG, "LOGOUT START")
+
+        presenceRuntimeController.stop()
 
         return try {
 
