@@ -17,7 +17,7 @@ private val Context.dataStore by preferencesDataStore(name = "session")
 
 class SessionManager(
     private val context: Context
-) {
+) : AccessTokenProvider, DeviceIdStore {
 
     companion object {
 
@@ -34,6 +34,9 @@ class SessionManager(
 
         private val SESSION_ID =
             stringPreferencesKey("session_id")
+
+        private val DEVICE_ID =
+            stringPreferencesKey("device_id")
     }
 
     init {
@@ -131,6 +134,27 @@ class SessionManager(
                 id
             }
 
+    val deviceId: Flow<String?> =
+        context.dataStore.data
+            .catch { exception ->
+
+                Log.e(TAG, "deviceId flow exception", exception)
+
+                if (exception is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw exception
+                }
+            }
+            .map { preferences ->
+
+                val id = preferences[DEVICE_ID]
+
+                Log.v(TAG, "DeviceId requested = $id")
+
+                id
+            }
+
     suspend fun saveSession(
         accessToken: String,
         refreshToken: String,
@@ -206,7 +230,7 @@ class SessionManager(
         }
     }
 
-    suspend fun getAccessToken(): String? {
+    override suspend fun getAccessToken(): String? {
 
         Log.d(TAG, "getAccessToken()")
 
@@ -242,8 +266,31 @@ class SessionManager(
 
             userId = preferences[USER_ID],
 
-            sessionId = preferences[SESSION_ID]
+            sessionId = preferences[SESSION_ID],
+
+            deviceId = preferences[DEVICE_ID]
         )
+    }
+
+    override suspend fun getDeviceId(): String? {
+        Log.d(TAG, "getDeviceId()")
+
+        return try {
+            deviceId.first()
+        } catch (e: Exception) {
+            Log.e(TAG, "getDeviceId() FAILED", e)
+            null
+        }
+    }
+
+    override suspend fun saveDeviceId(deviceId: String) {
+        require(deviceId.isNotBlank()) { "Device id must not be blank" }
+
+        Log.d(TAG, "saveDeviceId()")
+
+        context.dataStore.edit { preferences ->
+            preferences[DEVICE_ID] = deviceId
+        }
     }
 
     suspend fun getRefreshToken(): String? {

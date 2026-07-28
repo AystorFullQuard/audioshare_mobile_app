@@ -1,13 +1,12 @@
 package mme.corp.audioshare.network.interceptor
 
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import mme.corp.audioshare.data.storage.SessionManager
+import mme.corp.audioshare.data.storage.AccessTokenProvider
 import okhttp3.Interceptor
 import okhttp3.Response
 
 class AuthInterceptor(
-    private val sessionManager: SessionManager
+    private val accessTokenProvider: AccessTokenProvider
 ) : Interceptor {
 
     companion object {
@@ -15,9 +14,9 @@ class AuthInterceptor(
         private const val BEARER = "Bearer"
 
         private val UNAUTHENTICATED_PATHS = setOf(
-            "/auth/login",
-            "/auth/register",
-            "/bootstrap"
+            "/api/v1/auth/login",
+            "/api/v1/auth/register",
+            "/api/v1/auth/refresh"
         )
     }
 
@@ -30,7 +29,7 @@ class AuthInterceptor(
         }
 
         val token = runBlocking {
-            sessionManager.accessToken.first()
+            accessTokenProvider.getAccessToken()
         }
 
         if (token.isNullOrBlank()) {
@@ -45,5 +44,5 @@ class AuthInterceptor(
     }
 
     private fun isUnauthenticated(path: String): Boolean =
-        UNAUTHENTICATED_PATHS.any(path::endsWith)
+        path in UNAUTHENTICATED_PATHS
 }

@@ -7,5 +7,7 @@ data class Session(
 
     val userId: String?,
 
-    val sessionId: String?
+    val sessionId: String?,
+
+    val deviceId: String?
 )
