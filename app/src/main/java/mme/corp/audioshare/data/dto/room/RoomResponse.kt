@@ -4,7 +4,7 @@ data class RoomResponse(
     val id: String,
     val ownerUserId: String,
     val ownerDeviceId: String,
-    val name: String,
+    val name: String?,
     val status: RoomStatus,
     val visibility: RoomVisibility,
     val createdAt: String,

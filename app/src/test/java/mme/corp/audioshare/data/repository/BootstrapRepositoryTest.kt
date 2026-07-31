@@ -11,6 +11,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -75,6 +76,74 @@ class BootstrapRepositoryTest {
         ).asJsonObject
 
         assertFalse(body.has("deviceId"))
+    }
+
+    @Test
+    fun sessionBootstrapUsesPersistedDeviceAndMapsRoomSnapshot() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """
+                    {
+                      "rooms": [
+                        {
+                          "id": "room-1",
+                          "ownerUserId": "owner-1",
+                          "ownerDeviceId": "device-1",
+                          "name": null,
+                          "status": "ACTIVE",
+                          "visibility": "LOCAL_DISCOVERY",
+                          "currentUserRole": "MEMBER",
+                          "activeMemberCount": 2,
+                          "createdAt": "2026-07-31T12:00:00",
+                          "updatedAt": "2026-07-31T12:00:00",
+                          "archivedAt": null
+                        }
+                      ],
+                      "presence": {
+                        "userId": "user-id",
+                        "state": "IN_ROOM",
+                        "currentRoomId": "room-1",
+                        "lastSeenAt": "2026-07-31T12:00:00",
+                        "updatedAt": "2026-07-31T12:00:00"
+                      }
+                    }
+                    """.trimIndent()
+                )
+        )
+        val repository = repository(FakeDeviceIdStore("stored-device-id"))
+
+        val result = repository.loadSessionBootstrap(
+            displayName = "Test User",
+            deviceName = "Pixel 8",
+            appVersion = "1.0"
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("room-1", result.getOrThrow().rooms.single().id)
+        assertNull(result.getOrThrow().rooms.single().name)
+        assertEquals("room-1", result.getOrThrow().presence?.currentRoomId)
+
+        val request = server.takeRequest()
+        assertEquals("/api/v1/session/bootstrap", request.path)
+        val body = JsonParser.parseString(request.body.readUtf8()).asJsonObject
+        assertEquals("stored-device-id", body["deviceId"].asString)
+    }
+
+    @Test
+    fun sessionBootstrapWithoutPersistedDeviceFailsBeforeNetworkCall() = runTest {
+        val repository = repository(FakeDeviceIdStore())
+
+        val result = repository.loadSessionBootstrap(
+            displayName = null,
+            deviceName = null,
+            appVersion = null
+        )
+
+        assertTrue(result.isFailure)
+        assertEquals(0, server.requestCount)
     }
 
     private fun repository(store: FakeDeviceIdStore): BootstrapRepository {

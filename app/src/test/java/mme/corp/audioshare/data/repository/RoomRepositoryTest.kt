@@ -18,7 +18,6 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -268,7 +267,7 @@ class RoomRepositoryTest {
     }
 
     @Test
-    fun invalidSuccessPayloadReturnsFailureAndLogsMappingError() = runTest {
+    fun unnamedRoomResponseMapsSuccessfully() = runTest {
         server.enqueue(
             jsonResponse(
                 200,
@@ -292,10 +291,9 @@ class RoomRepositoryTest {
 
         val result = repository.getRoom("room-id")
 
-        assertTrue(result.isFailure)
-        assertEquals(1, logger.errorMessages.size)
-        assertTrue(logger.errorMessages.single().contains("Room get failed"))
-        assertNotNull(logger.errorThrowables.single())
+        assertTrue(result.isSuccess)
+        assertNull(result.getOrThrow().name)
+        assertTrue(logger.errorMessages.isEmpty())
     }
 
     @Test

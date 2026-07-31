@@ -3,12 +3,17 @@ package mme.corp.audioshare.startup
 import kotlinx.coroutines.CancellationException
 import mme.corp.audioshare.data.dto.bootstrap.BootstrapResponse
 import mme.corp.audioshare.data.dto.bootstrap.Platform
+import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
 import mme.corp.audioshare.data.model.presence.PresenceSnapshot
 import mme.corp.audioshare.data.repository.DeviceBootstrapper
+import mme.corp.audioshare.data.repository.SessionBootstrapLoader
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.logging.AppLogger
 import mme.corp.audioshare.presence.PresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceRuntimeController
+import mme.corp.audioshare.room.RoomSessionBootstrapRestorer
+import mme.corp.audioshare.room.RoomSessionRuntimeController
+import mme.corp.audioshare.room.RoomSessionState
 
 data class BootstrapStartupRequest(
     val displayName: String? = null,
@@ -19,11 +24,16 @@ data class BootstrapStartupRequest(
 
 data class BootstrapStartupSnapshot(
     val bootstrap: BootstrapResponse,
+    val sessionBootstrap: SessionBootstrapResponse,
+    val roomSession: RoomSessionState,
     val presence: PresenceSnapshot
 )
 
 class BootstrapStartupCoordinator(
     private val deviceBootstrapper: DeviceBootstrapper,
+    private val sessionBootstrapLoader: SessionBootstrapLoader,
+    private val roomSessionRestorer: RoomSessionBootstrapRestorer,
+    private val roomSessionRuntimeController: RoomSessionRuntimeController,
     private val heartbeatCoordinator: PresenceHeartbeatCoordinator,
     private val presenceRuntimeController: PresenceRuntimeController,
     private val logger: AppLogger = AppLogger.NO_OP
@@ -55,15 +65,60 @@ class BootstrapStartupCoordinator(
                 "presenceState=${bootstrap.presenceState.name}"
         )
 
+        val sessionBootstrap = sessionBootstrapLoader.loadSessionBootstrap(
+            displayName = request.displayName,
+            deviceName = request.deviceName,
+            appVersion = request.appVersion,
+            platform = request.platform
+        ).getOrElse { exception ->
+            logFailure("Session bootstrap failed", exception)
+            return Result.failure(exception)
+        }
+
+        logger.info(
+            TAG,
+            "Session bootstrap succeeded; roomCount=${sessionBootstrap.rooms.size}, " +
+                "hasCurrentRoom=${sessionBootstrap.presence?.currentRoomId != null}"
+        )
+
+        val roomSession = try {
+            roomSessionRestorer.restoreFromBootstrap(sessionBootstrap)
+        } catch (exception: CancellationException) {
+            logger.debug(TAG, "Room session restoration cancelled")
+            throw exception
+        }.getOrElse { exception ->
+            logFailure("Room session restoration failed", exception)
+            return Result.failure(exception)
+        }
+
+        logger.info(
+            TAG,
+            "Room session restoration succeeded; roomCount=${roomSession.rooms.size}, " +
+                "hasCurrentRoom=${roomSession.currentRoom != null}, " +
+                "memberCount=${roomSession.activeMembers.size}"
+        )
+
         logger.debug(TAG, "Sending initial presence heartbeat")
 
         val presence = try {
             heartbeatCoordinator.heartbeatNow()
         } catch (exception: CancellationException) {
+            roomSessionRuntimeController.resetAfterStartupFailure()
             logger.debug(TAG, "Startup initial heartbeat cancelled")
             throw exception
         }.getOrElse { exception ->
+            roomSessionRuntimeController.resetAfterStartupFailure()
             logFailure("Initial presence heartbeat failed", exception)
+            return Result.failure(exception)
+        }
+
+        if (roomSession.currentRoom?.id != presence.currentRoomId) {
+            val exception = RoomPresenceMismatchException()
+            roomSessionRuntimeController.resetAfterStartupFailure()
+            logFailure(
+                "Initial heartbeat disagreed with restored room session",
+                exception
+            )
             return Result.failure(exception)
         }
 
@@ -81,6 +136,8 @@ class BootstrapStartupCoordinator(
         return Result.success(
             BootstrapStartupSnapshot(
                 bootstrap = bootstrap,
+                sessionBootstrap = sessionBootstrap,
+                roomSession = roomSession,
                 presence = presence
             )
         )
@@ -109,7 +166,12 @@ class BootstrapStartupCoordinator(
     private fun Throwable.safeTypeName(): String =
         this::class.java.simpleName.ifBlank { "Throwable" }
 
+    private class RoomPresenceMismatchException :
+        IllegalStateException(
+            "Room session changed during startup; retry is required"
+        )
+
     private companion object {
-        const val TAG = "PresenceStartup"
+        const val TAG = "BootstrapStartup"
     }
 }

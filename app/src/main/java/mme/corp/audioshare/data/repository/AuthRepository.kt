@@ -1,32 +1,36 @@
 package mme.corp.audioshare.data.repository
 
 import android.util.Log
+import com.google.gson.Gson
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.dto.LoginRequest
 import mme.corp.audioshare.data.dto.LoginResponse
-import mme.corp.audioshare.data.storage.SessionManager
-import com.google.gson.Gson
 import mme.corp.audioshare.data.dto.RefreshRequest
 import mme.corp.audioshare.data.dto.RefreshResponse
+import mme.corp.audioshare.data.storage.SessionManager
 import mme.corp.audioshare.exception.ApiErrorResponse
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.presence.PresenceRuntimeController
+import mme.corp.audioshare.room.RoomSessionRuntimeController
 
 class AuthRepository(
     private val authApi: AuthApi,
     private val sessionManager: SessionManager,
     private val presenceRuntimeController: PresenceRuntimeController =
-        PresenceRuntimeController.NO_OP
+        PresenceRuntimeController.NO_OP,
+    private val roomSessionRuntimeController: RoomSessionRuntimeController =
+        RoomSessionRuntimeController.NO_OP
 ) {
 
     private val gson = Gson()
 
     companion object {
         private const val TAG = "AuthRepo"
+        private const val LOG_SEPARATOR = "=========================================="
     }
 
     init {
-        Log.d(TAG, "==========================================")
+        Log.d(TAG, LOG_SEPARATOR)
         Log.d(TAG, "AuthRepository created")
     }
 
@@ -35,7 +39,7 @@ class AuthRepository(
         password: String
     ): Result<LoginResponse> {
 
-        Log.d(TAG, "==========================================")
+        Log.d(TAG, LOG_SEPARATOR)
         Log.d(TAG, "LOGIN REQUEST START")
         Log.d(TAG, "Username = $login")
         Log.d(TAG, "Password length = ${password.length}")
@@ -60,7 +64,7 @@ class AuthRepository(
 
             if (!response.isSuccessful) {
 
-                Log.e(TAG, "==========================================")
+                Log.e(TAG, LOG_SEPARATOR)
                 Log.e(TAG, "HTTP REQUEST FAILED")
                 Log.e(TAG, "HTTP Code = ${response.code()}")
                 Log.e(TAG, "HTTP Message = ${response.message()}")
@@ -141,23 +145,23 @@ class AuthRepository(
             Log.d(TAG, "Session saved successfully")
 
             Log.i(TAG, "LOGIN REQUEST FINISHED SUCCESSFULLY")
-            Log.d(TAG, "==========================================")
+            Log.d(TAG, LOG_SEPARATOR)
 
             Result.success(body)
 
         } catch (e: Exception) {
-            Log.e(TAG, "==========================================")
+            Log.e(TAG, LOG_SEPARATOR)
             Log.e(TAG, "NETWORK EXCEPTION")
             Log.e(TAG, "Type    : ${e::class.java.simpleName}")
             Log.e(TAG, "Message : ${e.message}", e)
-            Log.e(TAG, "==========================================")
+            Log.e(TAG, LOG_SEPARATOR)
             Result.failure(e)
         }
     }
 
     suspend fun refresh(): Result<RefreshResponse> {
 
-        Log.d(TAG, "==========================================")
+        Log.d(TAG, LOG_SEPARATOR)
         Log.d(TAG, "REFRESH REQUEST START")
 
         return try {
@@ -192,12 +196,17 @@ class AuthRepository(
 
             if (!response.isSuccessful) {
 
-                Log.e(TAG, "==========================================")
+                Log.e(TAG, LOG_SEPARATOR)
                 Log.e(TAG, "REFRESH FAILED")
 
                 val rawError = try {
                     response.errorBody()?.string()
-                } catch (e: Exception) {
+                } catch (exception: Exception) {
+                    Log.e(
+                        TAG,
+                        "Unable to read refresh error body",
+                        exception
+                    )
                     null
                 }
 
@@ -207,8 +216,13 @@ class AuthRepository(
                         gson.fromJson(it, ApiErrorResponse::class.java)
                     }
 
-                } catch (e: Exception) {
+                } catch (exception: Exception) {
 
+                    Log.e(
+                        TAG,
+                        "Unable to parse refresh ApiErrorResponse",
+                        exception
+                    )
                     null
                 }
 
@@ -254,17 +268,17 @@ class AuthRepository(
             Log.i(TAG, "Refresh successful")
             Log.d(TAG, "AccessToken  : ${body.accessToken.take(20)}...")
             Log.d(TAG, "RefreshToken : ${body.refreshToken.take(20)}...")
-            Log.d(TAG, "==========================================")
+            Log.d(TAG, LOG_SEPARATOR)
 
             Result.success(body)
 
         } catch (e: Exception) {
 
-            Log.e(TAG, "==========================================")
+            Log.e(TAG, LOG_SEPARATOR)
             Log.e(TAG, "REFRESH EXCEPTION")
             Log.e(TAG, "Type    : ${e::class.java.simpleName}")
             Log.e(TAG, "Message : ${e.message}", e)
-            Log.e(TAG, "==========================================")
+            Log.e(TAG, LOG_SEPARATOR)
 
             Result.failure(e)
         }
@@ -272,10 +286,11 @@ class AuthRepository(
 
     suspend fun logout(): Result<Unit> {
 
-        Log.d(TAG, "==========================================")
+        Log.d(TAG, LOG_SEPARATOR)
         Log.d(TAG, "LOGOUT START")
 
         presenceRuntimeController.stop()
+        roomSessionRuntimeController.clearForLogout()
 
         return try {
 
@@ -332,7 +347,7 @@ class AuthRepository(
 
         } finally {
 
-            Log.d(TAG, "==========================================")
+            Log.d(TAG, LOG_SEPARATOR)
         }
     }
 }

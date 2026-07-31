@@ -17,6 +17,7 @@ import mme.corp.audioshare.network.retrofit.ApiClient
 import mme.corp.audioshare.presence.AppPresenceLifecycleObserver
 import mme.corp.audioshare.presence.DefaultPresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceLifecycleManager
+import mme.corp.audioshare.room.DefaultRoomSessionCoordinator
 import mme.corp.audioshare.startup.BootstrapStartupCoordinator
 
 class AppContainer(
@@ -42,7 +43,8 @@ class AppContainer(
 
     val bootstrapRepository = BootstrapRepository(
         bootstrapApi = bootstrapApi,
-        deviceIdStore = sessionManager
+        deviceIdStore = sessionManager,
+        logger = appLogger
     )
 
     val presenceRepository = PresenceRepository(
@@ -63,6 +65,13 @@ class AppContainer(
             logger = appLogger
         )
 
+    val roomSessionCoordinator =
+        DefaultRoomSessionCoordinator(
+            roomClient = roomRepository,
+            presenceCoordinator = presenceHeartbeatCoordinator,
+            logger = appLogger
+        )
+
     val presenceLifecycleManager =
         PresenceLifecycleManager(
             heartbeatCoordinator = presenceHeartbeatCoordinator,
@@ -77,6 +86,9 @@ class AppContainer(
     val bootstrapStartupCoordinator =
         BootstrapStartupCoordinator(
             deviceBootstrapper = bootstrapRepository,
+            sessionBootstrapLoader = bootstrapRepository,
+            roomSessionRestorer = roomSessionCoordinator,
+            roomSessionRuntimeController = roomSessionCoordinator,
             heartbeatCoordinator = presenceHeartbeatCoordinator,
             presenceRuntimeController = presenceLifecycleManager,
             logger = appLogger
@@ -85,6 +97,7 @@ class AppContainer(
     val authRepository = AuthRepository(
         authApi = authApi,
         sessionManager = sessionManager,
-        presenceRuntimeController = presenceLifecycleManager
+        presenceRuntimeController = presenceLifecycleManager,
+        roomSessionRuntimeController = roomSessionCoordinator
     )
 }
