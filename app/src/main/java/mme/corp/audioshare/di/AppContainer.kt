@@ -6,9 +6,11 @@ import kotlinx.coroutines.SupervisorJob
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.api.PresenceApi
+import mme.corp.audioshare.data.api.RoomsApi
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.data.repository.BootstrapRepository
 import mme.corp.audioshare.data.repository.PresenceRepository
+import mme.corp.audioshare.data.repository.RoomRepository
 import mme.corp.audioshare.data.storage.SessionManager
 import mme.corp.audioshare.logging.AndroidAppLogger
 import mme.corp.audioshare.network.retrofit.ApiClient
@@ -35,6 +37,9 @@ class AppContainer(
     private val presenceApi: PresenceApi =
         ApiClient.create(PresenceApi::class.java)
 
+    private val roomsApi: RoomsApi =
+        ApiClient.create(RoomsApi::class.java)
+
     val bootstrapRepository = BootstrapRepository(
         bootstrapApi = bootstrapApi,
         deviceIdStore = sessionManager
@@ -43,6 +48,12 @@ class AppContainer(
     val presenceRepository = PresenceRepository(
         presenceApi = presenceApi,
         deviceIdStore = sessionManager
+    )
+
+    val roomRepository = RoomRepository(
+        roomsApi = roomsApi,
+        deviceIdStore = sessionManager,
+        logger = appLogger
     )
 
     val presenceHeartbeatCoordinator =
