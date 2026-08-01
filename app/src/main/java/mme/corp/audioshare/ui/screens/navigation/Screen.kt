@@ -10,5 +10,14 @@ sealed class Screen(val route: String) {
 
     data object Home : Screen("home")
 
-    data object Room : Screen("room")
+    data object Rooms : Screen("rooms")
+
+    data object Room : Screen("room/{$ROOM_ID_ARGUMENT}") {
+        fun createRoute(roomId: String): String =
+            "room/${roomId.trim()}"
+    }
+
+    companion object {
+        const val ROOM_ID_ARGUMENT = "roomId"
+    }
 }

@@ -3,6 +3,9 @@ package mme.corp.audioshare.di
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.api.PresenceApi
@@ -28,6 +31,13 @@ class AppContainer(
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val appLogger = AndroidAppLogger
+
+    val accessTokenState: StateFlow<String?> =
+        sessionManager.accessToken.stateIn(
+            scope = applicationScope,
+            started = SharingStarted.Eagerly,
+            initialValue = null
+        )
 
     private val authApi: AuthApi =
         ApiClient.create(AuthApi::class.java)
