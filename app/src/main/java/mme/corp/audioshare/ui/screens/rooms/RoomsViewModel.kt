@@ -781,7 +781,9 @@ private fun RoomSessionOperation.toFallbackMessage(retryable: Boolean): String =
         when (this) {
             RoomSessionOperation.RESTORE -> "Unable to restore the room session."
             RoomSessionOperation.LOAD_ROOMS -> "Unable to load rooms."
-            RoomSessionOperation.OPEN_ROOM -> "Unable to open the room."
+            RoomSessionOperation.OPEN_ROOM,
+            RoomSessionOperation.ACTIVATE -> "Unable to open the room."
+            RoomSessionOperation.DEACTIVATE -> "Unable to close the room."
             RoomSessionOperation.REFRESH_ROOM,
             RoomSessionOperation.REFRESH_MEMBERS -> "Unable to refresh the room."
             RoomSessionOperation.CREATE -> "Unable to create the room."

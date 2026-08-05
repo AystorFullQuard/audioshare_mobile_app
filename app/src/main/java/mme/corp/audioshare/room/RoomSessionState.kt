@@ -7,6 +7,8 @@ enum class RoomSessionOperation {
     RESTORE,
     LOAD_ROOMS,
     OPEN_ROOM,
+    ACTIVATE,
+    DEACTIVATE,
     REFRESH_ROOM,
     REFRESH_MEMBERS,
     CREATE,

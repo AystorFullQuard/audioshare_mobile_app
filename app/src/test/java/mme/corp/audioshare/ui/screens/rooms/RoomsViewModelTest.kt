@@ -72,6 +72,32 @@ class RoomsViewModelTest {
     }
 
     @Test
+    fun activationOperationsUseSafeFallbackMessages() = runTest(dispatcher) {
+        val expectations = listOf(
+            RoomSessionOperation.ACTIVATE to "Unable to open the room.",
+            RoomSessionOperation.DEACTIVATE to "Unable to close the room."
+        )
+
+        expectations.forEach { (operation, expectedMessage) ->
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    lastError = RoomSessionError(
+                        operation = operation,
+                        type = "IllegalStateException"
+                    )
+                )
+            )
+
+            val viewModel = RoomsViewModel(coordinator)
+
+            assertEquals(
+                expectedMessage,
+                viewModel.uiState.value.sessionErrorMessage
+            )
+        }
+    }
+
+    @Test
     fun coordinatorUpdatesSessionWithoutClearingFormState() = runTest(dispatcher) {
         val coordinator = FakeRoomSessionCoordinator()
         val viewModel = RoomsViewModel(coordinator)
@@ -136,6 +162,20 @@ class RoomsViewModelTest {
             RoomsUiState(
                 session = RoomSessionState(
                     activeOperations = setOf(RoomSessionOperation.JOIN)
+                )
+            ).isRoomTransitionRunning
+        )
+        assertTrue(
+            RoomsUiState(
+                session = RoomSessionState(
+                    activeOperations = setOf(RoomSessionOperation.ACTIVATE)
+                )
+            ).isRoomTransitionRunning
+        )
+        assertTrue(
+            RoomsUiState(
+                session = RoomSessionState(
+                    activeOperations = setOf(RoomSessionOperation.DEACTIVATE)
                 )
             ).isRoomTransitionRunning
         )
@@ -1415,6 +1455,13 @@ class RoomsViewModelTest {
             emit(next)
             return Result.success(next)
         }
+
+        override suspend fun activateRoom(
+            roomId: String
+        ): Result<RoomSessionState> = Result.success(state.value)
+
+        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> =
+            Result.success(state.value)
 
         override suspend fun refreshCurrentRoom(): Result<RoomSessionState> {
             refreshOrder += "room"

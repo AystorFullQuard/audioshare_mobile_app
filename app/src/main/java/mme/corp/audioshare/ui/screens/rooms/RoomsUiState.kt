@@ -117,6 +117,8 @@ private fun RoomsUiOperation?.isDestructiveTransition(): Boolean =
 
 private fun RoomSessionOperation.isRoomTransition(): Boolean = when (this) {
     RoomSessionOperation.OPEN_ROOM,
+    RoomSessionOperation.ACTIVATE,
+    RoomSessionOperation.DEACTIVATE,
     RoomSessionOperation.CREATE,
     RoomSessionOperation.JOIN,
     RoomSessionOperation.LEAVE,

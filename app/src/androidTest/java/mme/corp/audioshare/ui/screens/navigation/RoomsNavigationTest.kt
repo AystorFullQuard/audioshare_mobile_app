@@ -192,6 +192,13 @@ class RoomsNavigationTest {
             return Result.success(next)
         }
 
+        override suspend fun activateRoom(
+            roomId: String
+        ): Result<RoomSessionState> = Result.success(state.value)
+
+        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> =
+            Result.success(state.value)
+
         override suspend fun refreshCurrentRoom(): Result<RoomSessionState> =
             Result.success(state.value)
 

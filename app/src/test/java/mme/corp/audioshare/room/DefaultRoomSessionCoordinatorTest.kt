@@ -187,6 +187,292 @@ class DefaultRoomSessionCoordinatorTest {
     }
 
     @Test
+    fun activateRoomCommitsServerRoomBeforeChangingDesiredPresence() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator =
+            DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        presence.onDesiredState = { desired ->
+            if (desired == PresenceState.IN_ROOM) {
+                assertEquals("room-2", coordinator.state.value.currentRoom?.id)
+            }
+        }
+        roomClient.activateHandler = { roomId ->
+            Result.success(room(roomId).copy(name = "Activated room"))
+        }
+
+        val result = coordinator.activateRoom(" room-2 ")
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(listOf("room-2"), roomClient.activatedRoomIds)
+        assertEquals("room-2", coordinator.state.value.currentRoom?.id)
+        assertEquals("Activated room", coordinator.state.value.currentRoom?.name)
+        assertEquals(listOf("room-1", "room-2"), coordinator.state.value.rooms.map { it.id })
+        assertEquals(1, coordinator.state.value.activeMembers.size)
+        assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun activateRoomRejectsBlankIdBeforeNetworkRequest() = runTest {
+        val roomClient = FakeRoomClient()
+        val coordinator = DefaultRoomSessionCoordinator(
+            roomClient,
+            FakePresenceCoordinator()
+        )
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+
+        val result = coordinator.activateRoom("  ")
+
+        assertTrue(result.isFailure)
+        assertEquals(0, roomClient.activateCalls)
+        assertEquals(
+            RoomSessionOperation.ACTIVATE,
+            coordinator.state.value.lastError?.operation
+        )
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun activateRoomFailurePreservesCurrentRoomAndPresence() = runTest {
+        val roomClient = FakeRoomClient().apply {
+            activateHandler = { Result.failure(IOException("offline")) }
+        }
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+
+        val result = coordinator.activateRoom("room-2")
+
+        assertTrue(result.isFailure)
+        assertEquals("room-1", coordinator.state.value.currentRoom?.id)
+        assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        assertEquals(RoomSessionOperation.ACTIVATE, coordinator.state.value.lastError?.operation)
+        assertEquals("room-2", coordinator.state.value.lastError?.roomId)
+        assertTrue(coordinator.state.value.lastError?.retryable == true)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun simultaneousActivateIsRejectedBeforeSecondNetworkRequest() = runTest {
+        val roomClient = FakeRoomClient()
+        val coordinator = DefaultRoomSessionCoordinator(
+            roomClient,
+            FakePresenceCoordinator()
+        )
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+        val releaseActivate = CompletableDeferred<Unit>()
+        roomClient.activateHandler = { roomId ->
+            releaseActivate.await()
+            Result.success(room(roomId))
+        }
+
+        val first = async { coordinator.activateRoom("room-1") }
+        runCurrent()
+        assertEquals(
+            setOf(RoomSessionOperation.ACTIVATE),
+            coordinator.state.value.activeOperations
+        )
+
+        val second = coordinator.activateRoom("room-2")
+
+        assertTrue(second.isFailure)
+        assertEquals(1, roomClient.activateCalls)
+        releaseActivate.complete(Unit)
+        assertTrue(first.await().isSuccess)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun cancelledActivateRethrowsAndClearsActiveOperation() = runTest {
+        val roomClient = FakeRoomClient()
+        val coordinator = DefaultRoomSessionCoordinator(
+            roomClient,
+            FakePresenceCoordinator()
+        )
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+        val activateResponse = CompletableDeferred<Result<Room>>()
+        roomClient.activateHandler = { activateResponse.await() }
+
+        val activate = async { coordinator.activateRoom("room-2") }
+        runCurrent()
+        assertEquals(
+            setOf(RoomSessionOperation.ACTIVATE),
+            coordinator.state.value.activeOperations
+        )
+
+        activate.cancel()
+        runCurrent()
+
+        assertTrue(activate.isCancelled)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(1, roomClient.activateCalls)
+    }
+
+    @Test
+    fun logoutInvalidatesLateActivateResponse() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+        val activateResponse = CompletableDeferred<Result<Room>>()
+        roomClient.activateHandler = { activateResponse.await() }
+
+        val activate = async { coordinator.activateRoom("room-2") }
+        runCurrent()
+        coordinator.clearForLogout()
+        activateResponse.complete(Result.success(room("room-2")))
+
+        assertTrue(activate.await().isFailure)
+        assertTrue(coordinator.state.value.rooms.isEmpty())
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(null, presence.desiredStates.last())
+    }
+
+    @Test
+    fun deactivateClearsCurrentContextBeforePresenceAndKeepsMembershipRoom() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator =
+            DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        presence.onDesiredState = { desired ->
+            if (desired == PresenceState.ONLINE) {
+                assertNull(coordinator.state.value.currentRoom)
+                assertTrue(coordinator.state.value.activeMembers.isEmpty())
+                assertEquals(listOf("room-1"), coordinator.state.value.rooms.map { it.id })
+            }
+        }
+
+        val result = coordinator.deactivateCurrentRoom()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, roomClient.deactivateCalls)
+        assertEquals(listOf("room-1"), roomClient.deactivatedRoomIds)
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(listOf("room-1"), coordinator.state.value.rooms.map { it.id })
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun deactivateFailurePreservesCurrentContextAndPresence() = runTest {
+        val roomClient = FakeRoomClient().apply {
+            deactivateHandler = { Result.failure(IOException("offline")) }
+        }
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+
+        val result = coordinator.deactivateCurrentRoom()
+
+        assertTrue(result.isFailure)
+        assertEquals("room-1", coordinator.state.value.currentRoom?.id)
+        assertEquals(1, coordinator.state.value.activeMembers.size)
+        assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        assertEquals(RoomSessionOperation.DEACTIVATE, coordinator.state.value.lastError?.operation)
+        assertEquals("room-1", coordinator.state.value.lastError?.roomId)
+        assertTrue(coordinator.state.value.lastError?.retryable == true)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun cancelledDeactivateRethrowsAndKeepsCurrentContext() = runTest {
+        val roomClient = FakeRoomClient()
+        val coordinator = DefaultRoomSessionCoordinator(
+            roomClient,
+            FakePresenceCoordinator()
+        )
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        val deactivateResponse = CompletableDeferred<Result<Unit>>()
+        roomClient.deactivateHandler = { deactivateResponse.await() }
+
+        val deactivate = async { coordinator.deactivateCurrentRoom() }
+        runCurrent()
+        assertEquals(
+            setOf(RoomSessionOperation.DEACTIVATE),
+            coordinator.state.value.activeOperations
+        )
+
+        deactivate.cancel()
+        runCurrent()
+
+        assertTrue(deactivate.isCancelled)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+        assertEquals("room-1", coordinator.state.value.currentRoom?.id)
+        assertEquals(1, roomClient.deactivateCalls)
+    }
+
+    @Test
+    fun deactivateWithoutCurrentRoomIsIdempotentAndSkipsNetwork() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+
+        val result = coordinator.deactivateCurrentRoom()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, roomClient.deactivateCalls)
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun simultaneousDeactivateIsRejectedBeforeSecondNetworkRequest() = runTest {
+        val roomClient = FakeRoomClient()
+        val coordinator = DefaultRoomSessionCoordinator(
+            roomClient,
+            FakePresenceCoordinator()
+        )
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        val releaseDeactivate = CompletableDeferred<Unit>()
+        roomClient.deactivateHandler = {
+            releaseDeactivate.await()
+            Result.success(Unit)
+        }
+
+        val first = async { coordinator.deactivateCurrentRoom() }
+        runCurrent()
+        assertEquals(
+            setOf(RoomSessionOperation.DEACTIVATE),
+            coordinator.state.value.activeOperations
+        )
+
+        val second = coordinator.deactivateCurrentRoom()
+
+        assertTrue(second.isFailure)
+        assertEquals(1, roomClient.deactivateCalls)
+        releaseDeactivate.complete(Unit)
+        assertTrue(first.await().isSuccess)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+    }
+
+    @Test
+    fun logoutInvalidatesLateDeactivateResponse() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        val deactivateResponse = CompletableDeferred<Result<Unit>>()
+        roomClient.deactivateHandler = { deactivateResponse.await() }
+
+        val deactivate = async { coordinator.deactivateCurrentRoom() }
+        runCurrent()
+        coordinator.clearForLogout()
+        deactivateResponse.complete(Result.success(Unit))
+
+        assertTrue(deactivate.await().isFailure)
+        assertTrue(coordinator.state.value.rooms.isEmpty())
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(null, presence.desiredStates.last())
+    }
+
+    @Test
     fun leaveClearsRoomBeforeChangingDesiredPresence() = runTest {
         val roomClient = FakeRoomClient()
         val presence = FakePresenceCoordinator()
@@ -716,8 +1002,18 @@ class DefaultRoomSessionCoordinatorTest {
         var joinHandler: suspend (String) -> Result<Room> = {
             Result.success(room(it))
         }
+        var activateHandler: suspend (String) -> Result<Room> = {
+            Result.success(room(it))
+        }
+        var deactivateHandler: suspend (String) -> Result<Unit> = {
+            Result.success(Unit)
+        }
         var createCalls: Int = 0
         var joinCalls: Int = 0
+        var activateCalls: Int = 0
+        var deactivateCalls: Int = 0
+        val activatedRoomIds = mutableListOf<String>()
+        val deactivatedRoomIds = mutableListOf<String>()
 
         override suspend fun createRoom(
             name: String?,
@@ -741,11 +1037,17 @@ class DefaultRoomSessionCoordinatorTest {
             return joinHandler(roomId)
         }
 
-        override suspend fun activateRoom(roomId: String): Result<Room> =
-            Result.success(room(roomId))
+        override suspend fun activateRoom(roomId: String): Result<Room> {
+            activateCalls += 1
+            activatedRoomIds += roomId
+            return activateHandler(roomId)
+        }
 
-        override suspend fun deactivateRoom(roomId: String): Result<Unit> =
-            Result.success(Unit)
+        override suspend fun deactivateRoom(roomId: String): Result<Unit> {
+            deactivateCalls += 1
+            deactivatedRoomIds += roomId
+            return deactivateHandler(roomId)
+        }
 
         override suspend fun leaveRoom(roomId: String): Result<Room> =
             Result.success(room(roomId))

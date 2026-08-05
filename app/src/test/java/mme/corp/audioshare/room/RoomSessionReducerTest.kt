@@ -72,6 +72,70 @@ class RoomSessionReducerTest {
     }
 
     @Test
+    fun roomActivatedSelectsRoomAndUpsertsMembershipSnapshot() {
+        val existing = room("room-1", "Existing")
+        val activated = room("room-2", "Activated")
+        val members = listOf(member("room-2"))
+        val state = RoomSessionState(
+            rooms = listOf(existing),
+            currentRoom = existing,
+            activeMembers = listOf(member("room-1"))
+        )
+
+        val result = RoomSessionReducer.reduce(
+            state,
+            RoomSessionMutation.RoomActivated(
+                room = activated,
+                members = members
+            )
+        )
+
+        assertEquals(listOf("room-1", "room-2"), result.rooms.map { it.id })
+        assertEquals("room-2", result.currentRoom?.id)
+        assertEquals(members, result.activeMembers)
+    }
+
+    @Test
+    fun roomDeactivatedClearsContextButKeepsMembershipRoom() {
+        val selected = room("room-1", "Selected")
+        val state = RoomSessionState(
+            rooms = listOf(selected),
+            currentRoom = selected,
+            activeMembers = listOf(member("room-1"))
+        )
+
+        val result = RoomSessionReducer.reduce(
+            state,
+            RoomSessionMutation.RoomDeactivated("room-1")
+        )
+
+        assertEquals(listOf("room-1"), result.rooms.map { it.id })
+        assertNull(result.currentRoom)
+        assertTrue(result.activeMembers.isEmpty())
+    }
+
+    @Test
+    fun staleRoomDeactivatedDoesNotClearNewActiveRoom() {
+        val oldRoom = room("room-1", "Old")
+        val current = room("room-2", "Current")
+        val members = listOf(member("room-2"))
+        val state = RoomSessionState(
+            rooms = listOf(oldRoom, current),
+            currentRoom = current,
+            activeMembers = members
+        )
+
+        val result = RoomSessionReducer.reduce(
+            state,
+            RoomSessionMutation.RoomDeactivated("room-1")
+        )
+
+        assertEquals("room-2", result.currentRoom?.id)
+        assertEquals(members, result.activeMembers)
+        assertEquals(listOf("room-1", "room-2"), result.rooms.map { it.id })
+    }
+
+    @Test
     fun roomRemovedMutationClearsOnlyMatchingSelection() {
         val selected = room("room-1", "Selected")
         val other = room("room-2", "Other")
