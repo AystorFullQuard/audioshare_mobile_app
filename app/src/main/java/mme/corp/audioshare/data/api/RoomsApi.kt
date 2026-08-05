@@ -36,6 +36,18 @@ interface RoomsApi {
         @Body request: RoomDeviceActionRequest
     ): Response<RoomResponse>
 
+    @POST("/api/v1/rooms/{roomId}/activate")
+    suspend fun activateRoom(
+        @Path("roomId") roomId: String,
+        @Body request: RoomDeviceActionRequest
+    ): Response<RoomResponse>
+
+    @POST("/api/v1/rooms/{roomId}/deactivate")
+    suspend fun deactivateRoom(
+        @Path("roomId") roomId: String,
+        @Body request: RoomDeviceActionRequest
+    ): Response<Unit>
+
     @POST("/api/v1/rooms/{roomId}/leave")
     suspend fun leaveRoom(
         @Path("roomId") roomId: String,

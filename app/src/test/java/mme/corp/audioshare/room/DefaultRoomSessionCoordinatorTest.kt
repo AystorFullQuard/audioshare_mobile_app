@@ -741,6 +741,12 @@ class DefaultRoomSessionCoordinatorTest {
             return joinHandler(roomId)
         }
 
+        override suspend fun activateRoom(roomId: String): Result<Room> =
+            Result.success(room(roomId))
+
+        override suspend fun deactivateRoom(roomId: String): Result<Unit> =
+            Result.success(Unit)
+
         override suspend fun leaveRoom(roomId: String): Result<Room> =
             Result.success(room(roomId))
 

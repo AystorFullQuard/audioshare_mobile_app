@@ -14,6 +14,7 @@ import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.exception.DeviceBootstrapRequiredException
 import mme.corp.audioshare.logging.AppLogger
 import mme.corp.audioshare.network.retrofit.executeApiCall
+import mme.corp.audioshare.network.retrofit.executeApiCallWithoutBody
 import retrofit2.Response
 
 interface RoomClient {
@@ -30,6 +31,10 @@ interface RoomClient {
     suspend fun getActiveMembers(roomId: String): Result<List<RoomMember>>
 
     suspend fun joinLocalDiscoveryRoom(roomId: String): Result<Room>
+
+    suspend fun activateRoom(roomId: String): Result<Room>
+
+    suspend fun deactivateRoom(roomId: String): Result<Unit>
 
     suspend fun leaveRoom(roomId: String): Result<Room>
 
@@ -142,6 +147,28 @@ class RoomRepository(
             call = roomsApi::joinRoom
         )
 
+    override suspend fun activateRoom(roomId: String): Result<Room> =
+        executeDeviceRoomAction(
+            operation = ACTIVATE,
+            roomId = roomId,
+            emptyBodyMessage = "Activate room response body is empty",
+            call = roomsApi::activateRoom
+        )
+
+    override suspend fun deactivateRoom(roomId: String): Result<Unit> =
+        executeDeviceRoomOperation(
+            operation = DEACTIVATE,
+            roomId = roomId,
+            operationCall = { resolvedRoomId, request ->
+                executeApiCallWithoutBody {
+                    roomsApi.deactivateRoom(resolvedRoomId, request)
+                }
+            },
+            successContext = { resolvedRoomId, _ ->
+                "roomId=$resolvedRoomId"
+            }
+        )
+
     override suspend fun leaveRoom(roomId: String): Result<Room> =
         executeDeviceRoomAction(
             operation = LEAVE,
@@ -166,7 +193,26 @@ class RoomRepository(
             String,
             RoomDeviceActionRequest
         ) -> Response<RoomResponse>
-    ): Result<Room> {
+    ): Result<Room> = executeDeviceRoomOperation(
+        operation = operation,
+        roomId = roomId,
+        operationCall = { resolvedRoomId, request ->
+            executeApiCall(emptyBodyMessage) {
+                call(resolvedRoomId, request)
+            }.mapSafely { response -> response.toDomain() }
+        },
+        successContext = { _, room -> "roomId=${room.id}" }
+    )
+
+    private suspend fun <T> executeDeviceRoomOperation(
+        operation: String,
+        roomId: String,
+        operationCall: suspend (
+            String,
+            RoomDeviceActionRequest
+        ) -> Result<T>,
+        successContext: (String, T) -> String
+    ): Result<T> {
         val resolvedRoomId = requireRoomId(roomId).getOrElse { exception ->
             logFailure(operation, roomId, exception)
             return Result.failure(exception)
@@ -181,18 +227,15 @@ class RoomRepository(
             "Room $operation started: roomId=$resolvedRoomId"
         )
 
-        return executeApiCall(emptyBodyMessage) {
-            call(
-                resolvedRoomId,
-                RoomDeviceActionRequest(deviceId)
-            )
-        }
-            .mapSafely { response -> response.toDomain() }
+        return operationCall(
+            resolvedRoomId,
+            RoomDeviceActionRequest(deviceId)
+        )
             .logResult(
                 operation = operation,
                 lifecycle = true,
                 failureRoomId = resolvedRoomId
-            ) { room -> "roomId=${room.id}" }
+            ) { value -> successContext(resolvedRoomId, value) }
     }
 
     private suspend fun requireDeviceId(): Result<String> {
@@ -267,18 +310,12 @@ class RoomRepository(
             append(exception.safeSummary())
         }
 
-        when {
-            exception is ApiException && exception.httpCode >= 500 ->
+        when (exception) {
+            is ApiException if exception.httpCode >= 500 ->
                 logger.error(TAG, message)
 
-            exception is ApiException ||
-                exception is DeviceBootstrapRequiredException ||
-                exception is IllegalArgumentException ->
-                logger.warn(TAG, message)
-
-            exception is IllegalStateException ->
-                logger.error(TAG, message)
-
+            is ApiException, is DeviceBootstrapRequiredException, is IllegalArgumentException -> logger.warn(TAG, message)
+            is IllegalStateException -> logger.error(TAG, message)
             else -> logger.error(TAG, message, exception)
         }
     }
@@ -301,6 +338,8 @@ class RoomRepository(
         const val GET = "get"
         const val MEMBERS = "members"
         const val JOIN = "join"
+        const val ACTIVATE = "activate"
+        const val DEACTIVATE = "deactivate"
         const val LEAVE = "leave"
         const val ARCHIVE = "archive"
     }
