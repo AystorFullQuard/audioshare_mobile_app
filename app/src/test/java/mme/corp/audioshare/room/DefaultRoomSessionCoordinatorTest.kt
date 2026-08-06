@@ -151,23 +151,13 @@ class DefaultRoomSessionCoordinatorTest {
     }
 
     @Test
-    fun createCommitsRoomBeforeChangingDesiredPresence() = runTest {
+    fun createAddsMembershipWithoutSelectingRoomOrChangingPresence() = runTest {
         val roomClient = FakeRoomClient()
         val presence = FakePresenceCoordinator()
-        lateinit var coordinator: DefaultRoomSessionCoordinator
-        presence.onDesiredState = { desired ->
-            if (desired == PresenceState.IN_ROOM) {
-                assertEquals("created-room", coordinator.state.value.currentRoom?.id)
-            }
-        }
-        coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
         coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+        val desiredStatesBeforeCreate = presence.desiredStates.toList()
         roomClient.createResult = Result.success(room("created-room"))
-        roomClient.membersHandler = { roomId ->
-            Result.success(
-                listOf(member(roomId).copy(role = RoomMemberRole.OWNER))
-            )
-        }
 
         val result = coordinator.createRoom(
             name = "Room",
@@ -177,13 +167,90 @@ class DefaultRoomSessionCoordinatorTest {
         assertTrue(result.isSuccess)
         assertFalse(result.getOrThrow().isBusy)
         assertTrue(result.getOrThrow().activeOperations.isEmpty())
-        assertEquals("created-room", coordinator.state.value.currentRoom?.id)
         assertEquals(
-            RoomMemberRole.OWNER,
-            coordinator.state.value.currentRoom?.currentUserRole
+            listOf("room-1", "created-room"),
+            coordinator.state.value.rooms.map { it.id }
         )
-        assertEquals(1L, coordinator.state.value.currentRoom?.activeMemberCount)
-        assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        val createdRoom = coordinator.state.value.rooms.last()
+        assertEquals(RoomMemberRole.OWNER, createdRoom.currentUserRole)
+        assertEquals(1L, createdRoom.activeMemberCount)
+        assertNull(coordinator.state.value.currentRoom)
+        assertTrue(coordinator.state.value.activeMembers.isEmpty())
+        assertEquals(desiredStatesBeforeCreate, presence.desiredStates)
+        assertEquals(0, roomClient.membersCalls)
+    }
+
+    @Test
+    fun joinAddsMembershipWithoutSelectingRoomOrChangingPresence() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+        val desiredStatesBeforeJoin = presence.desiredStates.toList()
+
+        val result = coordinator.joinLocalDiscoveryRoom(" room-2 ")
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, roomClient.joinCalls)
+        assertEquals(0, roomClient.activateCalls)
+        assertEquals(
+            listOf("room-1", "room-2"),
+            coordinator.state.value.rooms.map { it.id }
+        )
+        val joinedRoom = coordinator.state.value.rooms.last()
+        assertEquals(RoomMemberRole.MEMBER, joinedRoom.currentUserRole)
+        assertEquals(1L, joinedRoom.activeMemberCount)
+        assertNull(coordinator.state.value.currentRoom)
+        assertTrue(coordinator.state.value.activeMembers.isEmpty())
+        assertEquals(desiredStatesBeforeJoin, presence.desiredStates)
+        assertEquals(0, roomClient.membersCalls)
+    }
+
+    @Test
+    fun membershipOperationPreservesExistingActiveRoomAndMembers() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        val activeMembersBeforeJoin = coordinator.state.value.activeMembers
+        val desiredStatesBeforeJoin = presence.desiredStates.toList()
+        val memberCallsBeforeJoin = roomClient.membersCalls
+
+        val result = coordinator.joinLocalDiscoveryRoom("room-2")
+
+        assertTrue(result.isSuccess)
+        assertEquals("room-1", coordinator.state.value.currentRoom?.id)
+        assertEquals(
+            activeMembersBeforeJoin,
+            coordinator.state.value.activeMembers
+        )
+        assertEquals(
+            listOf("room-1", "room-2"),
+            coordinator.state.value.rooms.map { it.id }
+        )
+        assertEquals(desiredStatesBeforeJoin, presence.desiredStates)
+        assertEquals(memberCallsBeforeJoin, roomClient.membersCalls)
+    }
+
+    @Test
+    fun repeatedJoinUpsertsMembershipWithoutDuplicateRoom() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+
+        val first = coordinator.joinLocalDiscoveryRoom("room-2")
+        val second = coordinator.joinLocalDiscoveryRoom("room-2")
+
+        assertTrue(first.isSuccess)
+        assertTrue(second.isSuccess)
+        assertEquals(2, roomClient.joinCalls)
+        assertEquals(
+            listOf("room-1", "room-2"),
+            coordinator.state.value.rooms.map { it.id }
+        )
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
     }
 
     @Test
@@ -515,6 +582,8 @@ class DefaultRoomSessionCoordinatorTest {
 
         releaseJoin.complete(Unit)
         assertTrue(first.await().isSuccess)
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
     }
 
     @Test
@@ -667,8 +736,12 @@ class DefaultRoomSessionCoordinatorTest {
         assertEquals(0, roomClient.activateCalls)
         releaseJoin.complete(Unit)
         assertTrue(join.await().isSuccess)
-        assertEquals("room-b", coordinator.state.value.currentRoom?.id)
-        assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(
+            listOf("room-1", "room-b"),
+            coordinator.state.value.rooms.map { it.id }
+        )
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
     }
 
     @Test
@@ -795,7 +868,7 @@ class DefaultRoomSessionCoordinatorTest {
     }
 
     @Test
-    fun lifecycleLoggingCapturesOperationAndPresenceWithoutSensitiveValues() = runTest {
+    fun membershipLoggingDoesNotClaimActivationOrExposeSensitiveValues() = runTest {
         val roomClient = FakeRoomClient().apply {
             createResult = Result.success(
                 room("created-room").copy(name = "Sensitive customer room")
@@ -823,15 +896,15 @@ class DefaultRoomSessionCoordinatorTest {
             }
         )
         assertTrue(
-            logger.debugMessages.any {
-                it.contains("Desired Presence updated after room enter") &&
-                    it.contains("desiredState=IN_ROOM")
+            logger.infoMessages.any {
+                it.contains("Room create membership committed") &&
+                    it.contains("roomId=created-room") &&
+                    it.contains("activeRoomChanged=false")
             }
         )
         assertTrue(
-            logger.infoMessages.any {
-                it.contains("Room create committed") &&
-                    it.contains("roomId=created-room") &&
+            logger.allMessages().none {
+                it.contains("Desired Presence updated after room enter") ||
                     it.contains("desiredPresence=IN_ROOM")
             }
         )
@@ -844,42 +917,34 @@ class DefaultRoomSessionCoordinatorTest {
     }
 
     @Test
-    fun logoutDuringPostEnterMemberRefreshInvalidatesOperation() = runTest {
+    fun cancelledJoinRethrowsAndDoesNotCommitMembership() = runTest {
         val roomClient = FakeRoomClient()
         val presence = FakePresenceCoordinator()
         val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
         coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
-        val membersResponse = CompletableDeferred<Result<List<RoomMember>>>()
-        roomClient.membersHandler = { membersResponse.await() }
+        val joinResponse = CompletableDeferred<Result<Room>>()
+        roomClient.joinHandler = { joinResponse.await() }
 
-        val create = async {
-            coordinator.createRoom(visibility = RoomVisibility.PRIVATE)
-        }
+        val join = async { coordinator.joinLocalDiscoveryRoom("room-2") }
         runCurrent()
-        assertEquals("created-room", coordinator.state.value.currentRoom?.id)
+        join.cancel()
+        runCurrent()
 
-        coordinator.clearForLogout()
-        membersResponse.complete(Result.success(listOf(member("created-room"))))
-
-        assertTrue(create.await().isFailure)
-        assertTrue(coordinator.state.value.rooms.isEmpty())
+        assertTrue(join.isCancelled)
+        assertEquals(
+            listOf("room-1"),
+            coordinator.state.value.rooms.map { it.id }
+        )
         assertNull(coordinator.state.value.currentRoom)
-        assertEquals(null, presence.desiredStates.last())
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
     }
 
     @Test
-    fun unavailableMemberSnapshotAfterEnterFailsWithoutMisleadingCommitLog() = runTest {
+    fun createDoesNotDependOnMemberSnapshotEndpoint() = runTest {
         val roomClient = FakeRoomClient().apply {
             membersHandler = {
-                Result.failure(
-                    ApiException(
-                        httpCode = 409,
-                        apiError = ApiErrorResponse(
-                            code = "ROOM_ARCHIVED",
-                            message = "Room is archived"
-                        )
-                    )
-                )
+                throw AssertionError("Create must not load active members")
             }
         }
         val presence = FakePresenceCoordinator()
@@ -897,13 +962,14 @@ class DefaultRoomSessionCoordinatorTest {
             visibility = RoomVisibility.PRIVATE
         )
 
-        assertTrue(result.isFailure)
+        assertTrue(result.isSuccess)
+        assertEquals(0, roomClient.membersCalls)
         assertNull(coordinator.state.value.currentRoom)
         assertTrue(coordinator.state.value.activeMembers.isEmpty())
         assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
         assertTrue(
-            logger.infoMessages.none {
-                it.contains("Room create committed")
+            logger.infoMessages.any {
+                it.contains("Room create membership committed")
             }
         )
     }
@@ -1074,6 +1140,7 @@ class DefaultRoomSessionCoordinatorTest {
             Result.success(Unit)
         }
         var createCalls: Int = 0
+        var membersCalls: Int = 0
         var joinCalls: Int = 0
         var activateCalls: Int = 0
         var deactivateCalls: Int = 0
@@ -1095,7 +1162,10 @@ class DefaultRoomSessionCoordinatorTest {
 
         override suspend fun getActiveMembers(
             roomId: String
-        ): Result<List<RoomMember>> = membersHandler(roomId)
+        ): Result<List<RoomMember>> {
+            membersCalls += 1
+            return membersHandler(roomId)
+        }
 
         override suspend fun joinLocalDiscoveryRoom(roomId: String): Result<Room> {
             joinCalls += 1

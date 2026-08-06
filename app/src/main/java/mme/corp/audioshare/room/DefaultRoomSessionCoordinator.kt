@@ -532,7 +532,7 @@ class DefaultRoomSessionCoordinator(
         ).getOrElse { exception ->
             return Result.failure(exception)
         }
-        return executeEnterRoomOperation(
+        return executeMembershipOperation(
             operation = RoomSessionOperation.CREATE,
             roomId = null,
             expectedGeneration = expectedGeneration
@@ -559,7 +559,7 @@ class DefaultRoomSessionCoordinator(
             return Result.failure(exception)
         }
 
-        return executeEnterRoomOperation(
+        return executeMembershipOperation(
             operation = RoomSessionOperation.JOIN,
             roomId = resolvedRoomId,
             expectedGeneration = expectedGeneration
@@ -850,7 +850,7 @@ class DefaultRoomSessionCoordinator(
             return Result.failure(exception)
         }
 
-        return executeEnterRoomOperation(
+        return executeActiveRoomOperation(
             operation = operation,
             roomId = resolvedRoomId,
             expectedGeneration = expectedGeneration
@@ -944,7 +944,7 @@ class DefaultRoomSessionCoordinator(
         }
     }
 
-    private suspend fun executeEnterRoomOperation(
+    private suspend fun executeActiveRoomOperation(
         operation: RoomSessionOperation,
         roomId: String?,
         expectedGeneration: Long,
@@ -1003,6 +1003,58 @@ class DefaultRoomSessionCoordinator(
                 TAG,
                 "Room ${operation.name.lowercase()} committed; " +
                     "roomId=${room.id}, desiredPresence=IN_ROOM"
+            )
+            successfulState(lease)
+        } catch (exception: CancellationException) {
+            logCancellation(operation, roomId)
+            throw exception
+        } finally {
+            finishOperation(lease)
+        }
+    }
+
+    private suspend fun executeMembershipOperation(
+        operation: RoomSessionOperation,
+        roomId: String?,
+        expectedGeneration: Long,
+        request: suspend () -> Result<Room>
+    ): Result<RoomSessionState> {
+        val lease = beginOperation(
+            operation = operation,
+            key = LIFECYCLE_KEY,
+            expectedGeneration = expectedGeneration
+        ).getOrElse { exception ->
+            return Result.failure(exception)
+        }
+
+        return try {
+            val room = request().getOrElse { exception ->
+                recordFailure(lease, operation, roomId, exception)
+                return Result.failure(exception)
+            }
+
+            val committed = updateStateIfCurrent(lease) { current ->
+                val resolved = room
+                    .mergeMetadataFrom(
+                        current.rooms.firstOrNull { it.id == room.id }
+                    )
+                    .withEnterDefaults(operation)
+                RoomSessionReducer.reduce(
+                    current,
+                    RoomSessionMutation.RoomDetailsUpdated(resolved)
+                ).copy(
+                    isConnected = true,
+                    lastError = null
+                )
+            }
+            if (!committed) {
+                return Result.failure(RoomSessionResetException())
+            }
+
+            logger.info(
+                TAG,
+                "Room ${operation.name.lowercase()} membership committed; " +
+                    "roomId=${room.id}, activeRoomChanged=false"
             )
             successfulState(lease)
         } catch (exception: CancellationException) {
