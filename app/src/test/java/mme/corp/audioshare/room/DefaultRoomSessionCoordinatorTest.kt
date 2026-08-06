@@ -518,7 +518,7 @@ class DefaultRoomSessionCoordinatorTest {
     }
 
     @Test
-    fun openRoomSwitchesServerCurrentRoomBeforeCommittingState() = runTest {
+    fun openRoomActivatesMembershipWithoutJoining() = runTest {
         val roomClient = FakeRoomClient()
         val presence = FakePresenceCoordinator()
         lateinit var coordinator: DefaultRoomSessionCoordinator
@@ -533,37 +533,99 @@ class DefaultRoomSessionCoordinatorTest {
         val result = coordinator.openRoom("room-2")
 
         assertTrue(result.isSuccess)
-        assertEquals(1, roomClient.joinCalls)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(listOf("room-2"), roomClient.activatedRoomIds)
+        assertEquals(0, roomClient.joinCalls)
         assertEquals("room-2", coordinator.state.value.currentRoom?.id)
+        assertEquals(
+            listOf("room-1", "room-2"),
+            coordinator.state.value.rooms.map { it.id }
+        )
         assertEquals(1L, coordinator.state.value.currentRoom?.activeMemberCount)
         assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
     }
 
     @Test
-    fun openingAlreadyCurrentRoomRefreshesWithoutAnotherJoin() = runTest {
+    fun openingAlreadyCurrentRoomReactivatesWithoutJoining() = runTest {
         val roomClient = FakeRoomClient()
         val coordinator = DefaultRoomSessionCoordinator(
             roomClient,
             FakePresenceCoordinator()
         )
         coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
-        val initialJoinCalls = roomClient.joinCalls
 
         val result = coordinator.openRoom("room-1")
 
         assertTrue(result.isSuccess)
-        assertEquals(initialJoinCalls, roomClient.joinCalls)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(listOf("room-1"), roomClient.activatedRoomIds)
+        assertEquals(0, roomClient.joinCalls)
         assertEquals("room-1", coordinator.state.value.currentRoom?.id)
+        assertEquals(1, coordinator.state.value.activeMembers.size)
     }
 
     @Test
-    fun lifecycleJoinIsRejectedWhileOpenRoomSwitchIsInFlight() = runTest {
+    fun openActivationFailurePreservesExistingRoomAndDoesNotJoin() = runTest {
+        val roomClient = FakeRoomClient().apply {
+            activateHandler = { Result.failure(IOException("offline")) }
+        }
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+
+        val result = coordinator.openRoom("room-2")
+
+        assertTrue(result.isFailure)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(0, roomClient.joinCalls)
+        assertEquals("room-1", coordinator.state.value.currentRoom?.id)
+        assertEquals(listOf("room-1"), coordinator.state.value.rooms.map { it.id })
+        assertEquals(PresenceState.IN_ROOM, presence.desiredStates.last())
+        assertEquals(
+            RoomSessionOperation.OPEN_ROOM,
+            coordinator.state.value.lastError?.operation
+        )
+        assertEquals("room-2", coordinator.state.value.lastError?.roomId)
+        assertTrue(coordinator.state.value.lastError?.retryable == true)
+    }
+
+    @Test
+    fun cancelledOpenRethrowsAndClearsActiveOperation() = runTest {
+        val roomClient = FakeRoomClient()
+        val coordinator = DefaultRoomSessionCoordinator(
+            roomClient,
+            FakePresenceCoordinator()
+        )
+        coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
+        val activateResponse = CompletableDeferred<Result<Room>>()
+        roomClient.activateHandler = { activateResponse.await() }
+
+        val open = async { coordinator.openRoom("room-2") }
+        runCurrent()
+        assertEquals(
+            setOf(RoomSessionOperation.OPEN_ROOM),
+            coordinator.state.value.activeOperations
+        )
+
+        open.cancel()
+        runCurrent()
+
+        assertTrue(open.isCancelled)
+        assertTrue(coordinator.state.value.activeOperations.isEmpty())
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(0, roomClient.joinCalls)
+    }
+
+    @Test
+    fun lifecycleJoinIsRejectedWhileOpenActivationIsInFlight() = runTest {
         val roomClient = FakeRoomClient()
         val presence = FakePresenceCoordinator()
         val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
         coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
         val releaseOpen = CompletableDeferred<Unit>()
-        roomClient.joinHandler = {
+        roomClient.activateHandler = {
             releaseOpen.await()
             Result.success(room(it))
         }
@@ -574,7 +636,8 @@ class DefaultRoomSessionCoordinatorTest {
         val join = coordinator.joinLocalDiscoveryRoom("room-b")
 
         assertTrue(join.isFailure)
-        assertEquals(1, roomClient.joinCalls)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(0, roomClient.joinCalls)
 
         releaseOpen.complete(Unit)
         assertTrue(open.await().isSuccess)
@@ -601,6 +664,7 @@ class DefaultRoomSessionCoordinatorTest {
 
         assertTrue(open.isFailure)
         assertEquals(1, roomClient.joinCalls)
+        assertEquals(0, roomClient.activateCalls)
         releaseJoin.complete(Unit)
         assertTrue(join.await().isSuccess)
         assertEquals("room-b", coordinator.state.value.currentRoom?.id)
@@ -608,13 +672,13 @@ class DefaultRoomSessionCoordinatorTest {
     }
 
     @Test
-    fun duplicateOpenDoesNotInvalidateFirstServerSwitch() = runTest {
+    fun duplicateOpenDoesNotInvalidateFirstActivation() = runTest {
         val roomClient = FakeRoomClient()
         val presence = FakePresenceCoordinator()
         val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
         coordinator.restoreFromBootstrap(sessionBootstrap(null)).getOrThrow()
         val releaseOpen = CompletableDeferred<Unit>()
-        roomClient.joinHandler = {
+        roomClient.activateHandler = {
             releaseOpen.await()
             Result.success(room(it))
         }
@@ -624,7 +688,8 @@ class DefaultRoomSessionCoordinatorTest {
         val duplicate = coordinator.openRoom("room-a")
 
         assertTrue(duplicate.isFailure)
-        assertEquals(1, roomClient.joinCalls)
+        assertEquals(1, roomClient.activateCalls)
+        assertEquals(0, roomClient.joinCalls)
 
         releaseOpen.complete(Unit)
         assertTrue(first.await().isSuccess)
