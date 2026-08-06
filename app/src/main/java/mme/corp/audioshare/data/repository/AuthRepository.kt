@@ -6,12 +6,12 @@ import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.dto.LoginRequest
 import mme.corp.audioshare.data.dto.LoginResponse
 import mme.corp.audioshare.data.dto.RefreshRequest
-import mme.corp.audioshare.data.dto.RefreshResponse
 import mme.corp.audioshare.data.storage.SessionManager
 import mme.corp.audioshare.exception.ApiErrorResponse
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.presence.PresenceRuntimeController
 import mme.corp.audioshare.room.RoomSessionRuntimeController
+import mme.corp.audioshare.session.JwtSessionDecoder
 
 class AuthRepository(
     private val authApi: AuthApi,
@@ -127,19 +127,19 @@ class AuthRepository(
             }
 
             Log.i(TAG, "Login successful")
-            Log.d(TAG, "UserId       : ${body.userId}")
-            Log.d(TAG, "SessionId    : ${body.sessionId}")
-            Log.d(TAG, "TokenType    : ${body.tokenType}")
-            Log.d(TAG, "AccessToken  : ${body.accessToken.take(20)}...")
-            Log.d(TAG, "RefreshToken : ${body.refreshToken.take(20)}...")
+            Log.d(TAG, "UserId       : ${body.user.id}")
+            Log.d(TAG, "SessionId    : ${JwtSessionDecoder.sessionId(body.session.accessToken)}")
+            Log.d(TAG, "TokenType    : ${JwtSessionDecoder.tokenType(body.session.accessToken)}")
+            Log.d(TAG, "AccessToken  : ${body.session.accessToken.take(20)}...")
+            Log.d(TAG, "RefreshToken : ${body.session.refreshToken.take(20)}...")
 
             Log.d(TAG, "Saving session")
 
             sessionManager.saveSession(
-                accessToken = body.accessToken,
-                refreshToken = body.refreshToken,
-                userId = body.userId,
-                sessionId = body.sessionId
+                accessToken = body.session.accessToken,
+                refreshToken = body.session.refreshToken,
+                userId = body.user.id,
+                sessionId = JwtSessionDecoder.sessionId(body.session.accessToken)
             )
 
             Log.d(TAG, "Session saved successfully")
@@ -159,7 +159,7 @@ class AuthRepository(
         }
     }
 
-    suspend fun refresh(): Result<RefreshResponse> {
+    suspend fun refresh(): Result<LoginResponse> {
 
         Log.d(TAG, LOG_SEPARATOR)
         Log.d(TAG, "REFRESH REQUEST START")
@@ -259,16 +259,43 @@ class AuthRepository(
             Log.d(TAG, "Updating stored tokens")
 
             sessionManager.saveSession(
-                accessToken = body.accessToken,
-                refreshToken = body.refreshToken,
-                userId = body.userId,
-                sessionId = body.sessionId
+                accessToken = body.session.accessToken,
+                refreshToken = body.session.refreshToken,
+                userId = body.user.id,
+                sessionId = JwtSessionDecoder.sessionId(body.session.accessToken)
             )
 
             Log.i(TAG, "Refresh successful")
-            Log.d(TAG, "AccessToken  : ${body.accessToken.take(20)}...")
-            Log.d(TAG, "RefreshToken : ${body.refreshToken.take(20)}...")
-            Log.d(TAG, LOG_SEPARATOR)
+
+            Log.d(TAG, "UserId       : ${body.user.id}")
+
+            Log.d(
+                TAG,
+                "SessionId    : ${
+                    JwtSessionDecoder.sessionId(
+                        body.session.accessToken
+                    )
+                }"
+            )
+
+            Log.d(
+                TAG,
+                "TokenType    : ${
+                    JwtSessionDecoder.tokenType(
+                        body.session.accessToken
+                    )
+                }"
+            )
+
+            Log.d(
+                TAG,
+                "AccessToken  : ${body.session.accessToken.take(20)}..."
+            )
+
+            Log.d(
+                TAG,
+                "RefreshToken : ${body.session.refreshToken.take(20)}..."
+            )
 
             Result.success(body)
 
