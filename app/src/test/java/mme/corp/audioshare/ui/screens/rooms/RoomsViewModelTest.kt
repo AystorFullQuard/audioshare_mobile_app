@@ -160,6 +160,15 @@ class RoomsViewModelTest {
         )
         assertTrue(
             RoomsUiState(
+                runningOperation = RoomsUiOperation.DEACTIVATE_ROOM
+            ).isRoomTransitionRunning
+        )
+        assertTrue(RoomsUiState(roomExitPending = true).isBusy)
+        assertTrue(
+            RoomsUiState(roomExitPending = true).isRoomTransitionRunning
+        )
+        assertTrue(
+            RoomsUiState(
                 session = RoomSessionState(
                     activeOperations = setOf(RoomSessionOperation.JOIN)
                 )
@@ -402,6 +411,139 @@ class RoomsViewModelTest {
                 viewModel.uiState.value.sessionErrorMessage
             )
             assertNull(viewModel.uiState.value.feedback)
+        }
+
+    @Test
+    fun deactivateSuccessNavigatesAndKeepsMembershipRoom() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+            val event = async { viewModel.events.first() }
+
+            viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+            advanceUntilIdle()
+
+            assertEquals(1, coordinator.deactivateCalls)
+            assertEquals(RoomsUiEvent.NavigateToRooms, event.await())
+            assertNull(viewModel.uiState.value.currentRoom)
+            assertTrue(viewModel.uiState.value.roomExitPending)
+            assertEquals(
+                listOf(current.id),
+                viewModel.uiState.value.rooms.map { it.id }
+            )
+            assertNull(viewModel.uiState.value.feedback)
+        }
+
+    @Test
+    fun deactivateFailureKeepsRoomAndDoesNotNavigate() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            ).apply {
+                deactivateResult = Result.failure(IOException("offline"))
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+
+            viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+            advanceUntilIdle()
+
+            assertEquals(1, coordinator.deactivateCalls)
+            assertEquals(current.id, viewModel.uiState.value.currentRoom?.id)
+            assertFalse(viewModel.uiState.value.roomExitPending)
+            assertTrue(observedEvents.isEmpty())
+            assertEquals(
+                "Unable to reach ServeRelay. Check your connection and try again.",
+                viewModel.uiState.value.feedback?.message
+            )
+            collector.cancel()
+        }
+
+    @Test
+    fun deactivateSuccessWithoutClearedRoomDoesNotNavigate() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val unchanged = RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+            val coordinator = FakeRoomSessionCoordinator(unchanged).apply {
+                deactivateResult = Result.success(unchanged)
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+
+            viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+            advanceUntilIdle()
+
+            assertEquals(1, coordinator.deactivateCalls)
+            assertEquals(current.id, viewModel.uiState.value.currentRoom?.id)
+            assertFalse(viewModel.uiState.value.roomExitPending)
+            assertTrue(observedEvents.isEmpty())
+            assertEquals(
+                "Unable to close the room.",
+                viewModel.uiState.value.feedback?.message
+            )
+            collector.cancel()
+        }
+
+    @Test
+    fun duplicateDeactivateIsBlockedWhileFirstRequestIsRunning() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val gate = CompletableDeferred<Unit>()
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            ).apply {
+                deactivateRoomGate = gate
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            val event = async { viewModel.events.first() }
+
+            viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+            runCurrent()
+            viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+            runCurrent()
+
+            assertEquals(1, coordinator.deactivateCalls)
+            assertEquals(
+                RoomsUiOperation.DEACTIVATE_ROOM,
+                viewModel.uiState.value.runningOperation
+            )
+            assertEquals(current.id, viewModel.uiState.value.currentRoom?.id)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(1, coordinator.deactivateCalls)
+            assertEquals(RoomsUiEvent.NavigateToRooms, event.await())
+            assertNull(viewModel.uiState.value.currentRoom)
+            assertNull(viewModel.uiState.value.runningOperation)
+            assertTrue(viewModel.uiState.value.roomExitPending)
+            assertTrue(viewModel.uiState.value.isBusy)
         }
 
     @Test
@@ -1364,6 +1506,7 @@ class RoomsViewModelTest {
         var loadRoomsCalls = 0
         var createCalls = 0
         var joinCalls = 0
+        var deactivateCalls = 0
         var leaveCalls = 0
         var archiveCalls = 0
         val refreshOrder = mutableListOf<String>()
@@ -1372,6 +1515,7 @@ class RoomsViewModelTest {
         var openRoomGate: CompletableDeferred<Unit>? = null
         var createRoomGate: CompletableDeferred<Unit>? = null
         var joinRoomGate: CompletableDeferred<Unit>? = null
+        var deactivateRoomGate: CompletableDeferred<Unit>? = null
         var refreshRoomGate: CompletableDeferred<Unit>? = null
         var leaveRoomGate: CompletableDeferred<Unit>? = null
         var archiveRoomGate: CompletableDeferred<Unit>? = null
@@ -1380,6 +1524,7 @@ class RoomsViewModelTest {
         var loadRoomsResult: Result<List<Room>> = Result.success(emptyList())
         var openRoomResult: Result<RoomSessionState>? = null
         var joinResult: Result<RoomSessionState>? = null
+        var deactivateResult: Result<RoomSessionState>? = null
         var refreshRoomResult: Result<RoomSessionState>? = null
         var refreshMembersResult: Result<RoomSessionState>? = null
         var leaveResult: Result<RoomSessionState>? = null
@@ -1460,8 +1605,22 @@ class RoomsViewModelTest {
             roomId: String
         ): Result<RoomSessionState> = Result.success(state.value)
 
-        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> =
-            Result.success(state.value)
+        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> {
+            deactivateCalls += 1
+            deactivateRoomGate?.await()
+            deactivateResult?.let { result ->
+                result.onSuccess(::emit)
+                return result
+            }
+
+            val next = mutableState.value.copy(
+                currentRoom = null,
+                activeMembers = emptyList(),
+                lastError = null
+            )
+            emit(next)
+            return Result.success(next)
+        }
 
         override suspend fun refreshCurrentRoom(): Result<RoomSessionState> {
             refreshOrder += "room"

@@ -27,6 +27,7 @@ import java.io.IOException
 private const val ROOM_ID_REQUIRED_MESSAGE = "Room ID is required."
 private const val ROOM_UNAVAILABLE_MESSAGE = "Room is no longer available."
 private const val ROOM_OPERATION_FAILED_MESSAGE = "Room operation failed."
+private const val ROOM_CLOSE_FAILED_MESSAGE = "Unable to close the room."
 private const val MEMBER_ACTION_REQUIRED_MESSAGE =
     "Only a room member can leave this room."
 private const val OWNER_ACTION_REQUIRED_MESSAGE =
@@ -86,6 +87,7 @@ class RoomsViewModel(
             is RoomsUiAction.JoinRoomIdChanged -> updateJoinRoomId(action.value)
             RoomsUiAction.LoadRooms -> loadRooms()
             is RoomsUiAction.OpenRoom -> openRoom(action.roomId)
+            RoomsUiAction.DeactivateCurrentRoom -> deactivateCurrentRoom()
             is RoomsUiAction.OpenRoomDetails ->
                 openRoomDetails(action.roomId, force = false)
             RoomsUiAction.RetryRoomDetails -> retryRoomDetails()
@@ -231,6 +233,34 @@ class RoomsViewModel(
         }
     }
 
+    private fun deactivateCurrentRoom() {
+        val expectedRoomId = currentRoomActionId()
+
+        launchAction(RoomsUiOperation.DEACTIVATE_ROOM) {
+            coordinator.deactivateCurrentRoom()
+                .onSuccess { state ->
+                    if (state.currentRoom == null) {
+                        navigateAfterRoomLifecycleSuccess()
+                    } else {
+                        showSessionFailureOrFallback(
+                            state.lastError.forOperation(
+                                RoomSessionOperation.DEACTIVATE,
+                                expectedRoomId
+                            ),
+                            ROOM_CLOSE_FAILED_MESSAGE
+                        )
+                    }
+                }
+                .onFailure { exception ->
+                    showFailure(
+                        exception,
+                        RoomSessionOperation.DEACTIVATE,
+                        expectedRoomId
+                    )
+                }
+        }
+    }
+
     private fun openRoomDetails(rawRoomId: String, force: Boolean) {
         val roomId = rawRoomId.normalizedRoomId()
         if (roomId == null) {
@@ -268,7 +298,12 @@ class RoomsViewModel(
     }
 
     private fun prepareRoomDetailsTarget(roomId: String) {
-        if (mutableUiState.value.roomDetailsRoomId == roomId) return
+        val currentState = mutableUiState.value
+        if (currentState.roomDetailsRoomId == roomId &&
+            !currentState.roomExitPending
+        ) {
+            return
+        }
 
         roomDetailsWasAvailable = false
         roomDetailsExitEventSent = false
@@ -276,6 +311,7 @@ class RoomsViewModel(
         mutableUiState.update { current ->
             current.copy(
                 roomDetailsRoomId = roomId,
+                roomExitPending = false,
                 confirmation = null,
                 feedback = null
             )
@@ -540,6 +576,7 @@ class RoomsViewModel(
 
     private fun navigateAfterRoomLifecycleSuccess() {
         if (mutableUiState.value.roomDetailsRoomId == null) {
+            markRoomExitPending()
             emitEvent(RoomsUiEvent.NavigateToRooms)
         } else {
             navigateFromRoomDetailsOnce()
@@ -583,7 +620,9 @@ class RoomsViewModel(
     }
 
     private fun isActionBlocked(): Boolean =
-        actionJob?.isActive == true || coordinator.state.value.isBusy
+        mutableUiState.value.roomExitPending ||
+            actionJob?.isActive == true ||
+            coordinator.state.value.isBusy
 
     private fun applySessionState(session: RoomSessionState) {
         val expectedRoomId = mutableUiState.value.roomDetailsRoomId
@@ -601,6 +640,8 @@ class RoomsViewModel(
         mutableUiState.update { current ->
             current.copy(
                 session = session,
+                roomExitPending = current.roomExitPending ||
+                    shouldExitRoomDetails,
                 confirmation = if (shouldExitRoomDetails) null else current.confirmation,
                 sessionErrorMessage = if (current.runningOperation == null) {
                     session.lastError.toDisplayMessageOrNull()
@@ -618,7 +659,21 @@ class RoomsViewModel(
     private fun navigateFromRoomDetailsOnce() {
         if (roomDetailsExitEventSent) return
         roomDetailsExitEventSent = true
+        markRoomExitPending()
         emitEvent(RoomsUiEvent.NavigateToRooms)
+    }
+
+    private fun markRoomExitPending() {
+        mutableUiState.update { current ->
+            if (current.roomExitPending) {
+                current
+            } else {
+                current.copy(
+                    roomExitPending = true,
+                    confirmation = null
+                )
+            }
+        }
     }
 
     private fun clearRoomNameIfUnchanged(submittedValue: String) {
@@ -783,7 +838,7 @@ private fun RoomSessionOperation.toFallbackMessage(retryable: Boolean): String =
             RoomSessionOperation.LOAD_ROOMS -> "Unable to load rooms."
             RoomSessionOperation.OPEN_ROOM,
             RoomSessionOperation.ACTIVATE -> "Unable to open the room."
-            RoomSessionOperation.DEACTIVATE -> "Unable to close the room."
+            RoomSessionOperation.DEACTIVATE -> ROOM_CLOSE_FAILED_MESSAGE
             RoomSessionOperation.REFRESH_ROOM,
             RoomSessionOperation.REFRESH_MEMBERS -> "Unable to refresh the room."
             RoomSessionOperation.CREATE -> "Unable to create the room."
