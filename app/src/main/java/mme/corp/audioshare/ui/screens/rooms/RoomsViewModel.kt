@@ -28,6 +28,12 @@ private const val ROOM_ID_REQUIRED_MESSAGE = "Room ID is required."
 private const val ROOM_UNAVAILABLE_MESSAGE = "Room is no longer available."
 private const val ROOM_OPERATION_FAILED_MESSAGE = "Room operation failed."
 private const val ROOM_CLOSE_FAILED_MESSAGE = "Unable to close the room."
+private const val ROOM_CREATED_MESSAGE = "Room created. Use Open to enter it."
+private const val ROOM_JOINED_MESSAGE = "Room joined. Use Open to enter it."
+private const val ROOM_CREATE_INCONSISTENT_MESSAGE =
+    "Room creation returned an inconsistent state."
+private const val ROOM_JOIN_INCONSISTENT_MESSAGE =
+    "Room join returned an inconsistent state."
 private const val MEMBER_ACTION_REQUIRED_MESSAGE =
     "Only a room member can leave this room."
 private const val OWNER_ACTION_REQUIRED_MESSAGE =
@@ -144,21 +150,32 @@ class RoomsViewModel(
     private fun createRoom() {
         val submittedNameInput = mutableUiState.value.roomNameInput
         val submittedVisibility = mutableUiState.value.createVisibility
+        val previousRoomIds = mutableUiState.value.rooms.map { it.id }.toSet()
+        val expectedCurrentRoomId = mutableUiState.value.currentRoom?.id
 
         launchAction(RoomsUiOperation.CREATE_ROOM) {
             coordinator.createRoom(
                 name = submittedNameInput.normalizedRoomName(),
                 visibility = submittedVisibility
             ).onSuccess { state ->
-                val roomId = state.currentRoom?.id
-                if (roomId == null) {
-                    showFeedback(
-                        message = "Room was created, but no current room was returned.",
-                        isError = true
+                val createdMembershipAdded = state.rooms.any { room ->
+                    room.id !in previousRoomIds &&
+                        room.status == RoomStatus.ACTIVE &&
+                        room.currentUserRole == RoomMemberRole.OWNER
+                }
+                val activeRoomUnchanged =
+                    state.currentRoom?.id == expectedCurrentRoomId
+                if (!createdMembershipAdded || !activeRoomUnchanged) {
+                    showSessionFailureOrFallback(
+                        state.lastError.forOperation(
+                            RoomSessionOperation.CREATE,
+                            null
+                        ),
+                        ROOM_CREATE_INCONSISTENT_MESSAGE
                     )
                 } else {
                     clearRoomNameIfUnchanged(submittedNameInput)
-                    emitEvent(RoomsUiEvent.NavigateToRoom(roomId))
+                    showFeedback(ROOM_CREATED_MESSAGE)
                 }
             }.onFailure { exception ->
                 showFailure(exception, RoomSessionOperation.CREATE)
@@ -172,6 +189,7 @@ class RoomsViewModel(
         }
 
         val submittedRoomIdInput = mutableUiState.value.joinRoomIdInput
+        val expectedCurrentRoomId = mutableUiState.value.currentRoom?.id
         val roomId = submittedRoomIdInput.normalizedRoomId()
         if (roomId == null) {
             showFeedback(ROOM_ID_REQUIRED_MESSAGE, isError = true)
@@ -181,21 +199,24 @@ class RoomsViewModel(
         launchAction(RoomsUiOperation.JOIN_ROOM) {
             coordinator.joinLocalDiscoveryRoom(roomId)
                 .onSuccess { state ->
-                    val joinedRoom = state.currentRoom
-                    val joinedRequestedRoom = joinedRoom?.let { room ->
-                        room.id == roomId && room.status == RoomStatus.ACTIVE
-                    } == true
-                    if (!joinedRequestedRoom) {
+                    val joinedRequestedRoom = state.rooms.any { room ->
+                        room.id == roomId &&
+                            room.status == RoomStatus.ACTIVE &&
+                            room.currentUserRole != null
+                    }
+                    val activeRoomUnchanged =
+                        state.currentRoom?.id == expectedCurrentRoomId
+                    if (!joinedRequestedRoom || !activeRoomUnchanged) {
                         showSessionFailureOrFallback(
                             state.lastError.forOperation(
                                 RoomSessionOperation.JOIN,
                                 roomId
                             ),
-                            "Room join returned an inconsistent state."
+                            ROOM_JOIN_INCONSISTENT_MESSAGE
                         )
                     } else {
                         clearJoinRoomIdIfUnchanged(submittedRoomIdInput)
-                        emitEvent(RoomsUiEvent.NavigateToRoom(roomId))
+                        showFeedback(ROOM_JOINED_MESSAGE)
                     }
                 }
                 .onFailure { exception ->

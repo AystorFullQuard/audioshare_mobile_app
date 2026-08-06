@@ -205,47 +205,117 @@ class RoomsViewModelTest {
     }
 
     @Test
-    fun createRoomTrimsNameUsesVisibilityAndNavigates() = runTest(dispatcher) {
-        val coordinator = FakeRoomSessionCoordinator()
-        val viewModel = RoomsViewModel(coordinator)
-        val event = async { viewModel.events.first() }
-        viewModel.onAction(RoomsUiAction.RoomNameChanged("  Team room  "))
-        viewModel.onAction(
-            RoomsUiAction.CreateVisibilityChanged(RoomVisibility.LOCAL_DISCOVERY)
-        )
+    fun createRoomKeepsListContextClearsNameAndShowsFeedback() =
+        runTest(dispatcher) {
+            val current = room("room-current")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+            viewModel.onAction(RoomsUiAction.RoomNameChanged("  Team room  "))
+            viewModel.onAction(
+                RoomsUiAction.CreateVisibilityChanged(
+                    RoomVisibility.LOCAL_DISCOVERY
+                )
+            )
 
-        viewModel.onAction(RoomsUiAction.CreateRoom)
-        advanceUntilIdle()
+            viewModel.onAction(RoomsUiAction.CreateRoom)
+            advanceUntilIdle()
 
-        assertEquals("Team room", coordinator.createdName)
-        assertEquals(
-            RoomVisibility.LOCAL_DISCOVERY,
-            coordinator.createdVisibility
-        )
-        assertEquals(
-            RoomsUiEvent.NavigateToRoom("created-room"),
-            event.await()
-        )
-        assertEquals("", viewModel.uiState.value.roomNameInput)
-        assertNull(viewModel.uiState.value.feedback)
-    }
+            assertEquals("Team room", coordinator.createdName)
+            assertEquals(
+                RoomVisibility.LOCAL_DISCOVERY,
+                coordinator.createdVisibility
+            )
+            assertTrue(observedEvents.isEmpty())
+            assertEquals("room-current", viewModel.uiState.value.currentRoom?.id)
+            assertEquals(
+                listOf("room-current", "created-room"),
+                viewModel.uiState.value.rooms.map { it.id }
+            )
+            assertEquals("", viewModel.uiState.value.roomNameInput)
+            assertEquals(
+                "Room created. Use Open to enter it.",
+                viewModel.uiState.value.feedback?.message
+            )
+            assertFalse(viewModel.uiState.value.feedback?.isError == true)
+            collector.cancel()
+        }
 
     @Test
     fun blankCreateNameIsSentAsNull() = runTest(dispatcher) {
         val coordinator = FakeRoomSessionCoordinator()
         val viewModel = RoomsViewModel(coordinator)
-        val event = async { viewModel.events.first() }
         viewModel.onAction(RoomsUiAction.RoomNameChanged("   "))
 
         viewModel.onAction(RoomsUiAction.CreateRoom)
         advanceUntilIdle()
 
         assertNull(coordinator.createdName)
+        assertNull(viewModel.uiState.value.currentRoom)
+        assertEquals(listOf("created-room"), viewModel.uiState.value.rooms.map { it.id })
         assertEquals(
-            RoomsUiEvent.NavigateToRoom("created-room"),
-            event.await()
+            "Room created. Use Open to enter it.",
+            viewModel.uiState.value.feedback?.message
         )
     }
+
+    @Test
+    fun createDoesNotReportSuccessWhenMembershipSnapshotIsMissing() =
+        runTest(dispatcher) {
+            val coordinator = FakeRoomSessionCoordinator().apply {
+                createResult = Result.success(RoomSessionState())
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            viewModel.onAction(RoomsUiAction.RoomNameChanged("Team room"))
+
+            viewModel.onAction(RoomsUiAction.CreateRoom)
+            advanceUntilIdle()
+
+            assertEquals(
+                "Room creation returned an inconsistent state.",
+                viewModel.uiState.value.feedback?.message
+            )
+            assertTrue(viewModel.uiState.value.feedback?.isError == true)
+            assertEquals("Team room", viewModel.uiState.value.roomNameInput)
+        }
+
+    @Test
+    fun createDoesNotReportSuccessWhenCoordinatorActivatesCreatedRoom() =
+        runTest(dispatcher) {
+            val created = room("created-room").copy(
+                currentUserRole = RoomMemberRole.OWNER
+            )
+            val coordinator = FakeRoomSessionCoordinator().apply {
+                createResult = Result.success(
+                    RoomSessionState(
+                        rooms = listOf(created),
+                        currentRoom = created
+                    )
+                )
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            viewModel.onAction(RoomsUiAction.RoomNameChanged("Team room"))
+
+            viewModel.onAction(RoomsUiAction.CreateRoom)
+            advanceUntilIdle()
+
+            assertEquals(
+                "Room creation returned an inconsistent state.",
+                viewModel.uiState.value.feedback?.message
+            )
+            assertTrue(viewModel.uiState.value.feedback?.isError == true)
+            assertEquals("Team room", viewModel.uiState.value.roomNameInput)
+        }
 
     @Test
     fun blankJoinIsRejectedBeforeCoordinatorCall() = runTest(dispatcher) {
@@ -265,30 +335,49 @@ class RoomsViewModelTest {
     }
 
     @Test
-    fun joinTrimsRoomIdClearsInputAndNavigates() = runTest(dispatcher) {
-        val coordinator = FakeRoomSessionCoordinator()
-        val viewModel = RoomsViewModel(coordinator)
-        val event = async { viewModel.events.first() }
-        viewModel.onAction(RoomsUiAction.JoinRoomIdChanged("  room-2  "))
+    fun joinKeepsListContextClearsInputAndShowsFeedback() =
+        runTest(dispatcher) {
+            val current = room("room-current")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+            viewModel.onAction(RoomsUiAction.JoinRoomIdChanged("  room-2  "))
 
-        viewModel.onAction(RoomsUiAction.JoinLocalDiscoveryRoom)
-        advanceUntilIdle()
+            viewModel.onAction(RoomsUiAction.JoinLocalDiscoveryRoom)
+            advanceUntilIdle()
 
-        assertEquals("room-2", coordinator.joinedRoomId)
-        assertEquals(
-            RoomsUiEvent.NavigateToRoom("room-2"),
-            event.await()
-        )
-        assertEquals("", viewModel.uiState.value.joinRoomIdInput)
-        assertNull(viewModel.uiState.value.feedback)
-    }
+            assertEquals("room-2", coordinator.joinedRoomId)
+            assertTrue(observedEvents.isEmpty())
+            assertEquals("room-current", viewModel.uiState.value.currentRoom?.id)
+            assertEquals(
+                listOf("room-current", "room-2"),
+                viewModel.uiState.value.rooms.map { it.id }
+            )
+            assertEquals("", viewModel.uiState.value.joinRoomIdInput)
+            assertEquals(
+                "Room joined. Use Open to enter it.",
+                viewModel.uiState.value.feedback?.message
+            )
+            assertFalse(viewModel.uiState.value.feedback?.isError == true)
+            collector.cancel()
+        }
 
     @Test
-    fun joinDoesNotNavigateWhenCoordinatorSelectsDifferentRoom() =
+    fun joinDoesNotReportSuccessWhenRequestedMembershipIsMissing() =
         runTest(dispatcher) {
             val coordinator = FakeRoomSessionCoordinator().apply {
                 joinResult = Result.success(
-                    RoomSessionState(currentRoom = room("room-other"))
+                    RoomSessionState(rooms = listOf(room("room-other")))
                 )
             }
             val viewModel = RoomsViewModel(coordinator)
@@ -310,6 +399,32 @@ class RoomsViewModelTest {
             )
             assertEquals("room-requested", viewModel.uiState.value.joinRoomIdInput)
             collector.cancel()
+        }
+
+    @Test
+    fun joinDoesNotReportSuccessWhenCoordinatorActivatesJoinedRoom() =
+        runTest(dispatcher) {
+            val joined = room("room-requested")
+            val coordinator = FakeRoomSessionCoordinator().apply {
+                joinResult = Result.success(
+                    RoomSessionState(
+                        rooms = listOf(joined),
+                        currentRoom = joined
+                    )
+                )
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            viewModel.onAction(RoomsUiAction.JoinRoomIdChanged("room-requested"))
+
+            viewModel.onAction(RoomsUiAction.JoinLocalDiscoveryRoom)
+            advanceUntilIdle()
+
+            assertEquals(
+                "Room join returned an inconsistent state.",
+                viewModel.uiState.value.feedback?.message
+            )
+            assertTrue(viewModel.uiState.value.feedback?.isError == true)
+            assertEquals("room-requested", viewModel.uiState.value.joinRoomIdInput)
         }
 
     @Test
@@ -1523,6 +1638,7 @@ class RoomsViewModelTest {
         var openRoomBusyFailuresRemaining = 0
         var loadRoomsResult: Result<List<Room>> = Result.success(emptyList())
         var openRoomResult: Result<RoomSessionState>? = null
+        var createResult: Result<RoomSessionState>? = null
         var joinResult: Result<RoomSessionState>? = null
         var deactivateResult: Result<RoomSessionState>? = null
         var refreshRoomResult: Result<RoomSessionState>? = null
@@ -1645,14 +1761,19 @@ class RoomsViewModelTest {
             createdName = name
             createdVisibility = visibility
             createRoomGate?.await()
+            createResult?.let { result ->
+                result.onSuccess(::emit)
+                return result
+            }
             val created = room("created-room").copy(
                 name = name,
                 visibility = visibility,
                 currentUserRole = RoomMemberRole.OWNER
             )
-            val next = RoomSessionState(
-                rooms = listOf(created),
-                currentRoom = created
+            val next = mutableState.value.copy(
+                rooms = mutableState.value.rooms
+                    .filterNot { it.id == created.id } + created,
+                lastError = null
             )
             emit(next)
             return Result.success(next)
@@ -1669,9 +1790,10 @@ class RoomsViewModelTest {
                 return result
             }
             val joined = room(roomId)
-            val next = RoomSessionState(
-                rooms = listOf(joined),
-                currentRoom = joined
+            val next = mutableState.value.copy(
+                rooms = mutableState.value.rooms
+                    .filterNot { it.id == joined.id } + joined,
+                lastError = null
             )
             emit(next)
             return Result.success(next)
