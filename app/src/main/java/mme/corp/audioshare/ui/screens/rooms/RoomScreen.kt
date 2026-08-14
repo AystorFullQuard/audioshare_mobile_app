@@ -70,7 +70,6 @@ object RoomUiTestTags {
 fun RoomScreen(
     roomId: String,
     coordinator: RoomSessionCoordinator,
-    onBack: () -> Unit,
     onNavigateRooms: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -82,7 +81,6 @@ fun RoomScreen(
     RoomScreen(
         roomId = roomId,
         viewModel = roomsViewModel,
-        onBack = onBack,
         onNavigateRooms = onNavigateRooms,
         modifier = modifier
     )
@@ -92,7 +90,6 @@ fun RoomScreen(
 internal fun RoomScreen(
     roomId: String,
     viewModel: RoomsViewModel,
-    onBack: () -> Unit,
     onNavigateRooms: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -100,8 +97,8 @@ internal fun RoomScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    BackHandler(enabled = state.isRoomTransitionRunning) {
-        // Keep the destination alive until the server-authoritative exit completes.
+    BackHandler {
+        viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
     }
 
     LaunchedEffect(
@@ -140,7 +137,9 @@ internal fun RoomScreen(
             roomId = roomId,
             state = state,
             onAction = viewModel::onAction,
-            onBack = onBack,
+            onBack = {
+                viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+            },
             modifier = Modifier.padding(contentPadding)
         )
     }
@@ -191,7 +190,7 @@ private fun RoomScreenList(
     ) {
         item {
             RoomHeader(
-                backEnabled = !state.isRoomTransitionRunning,
+                backEnabled = !state.isBusy,
                 refreshEnabled = presentation.room != null && !state.isBusy,
                 onBack = onBack,
                 onRefresh = { onAction(RoomsUiAction.RefreshCurrentRoom) }
@@ -224,9 +223,11 @@ private fun RoomScreenList(
             item {
                 RoomErrorCard(
                     message = message,
-                    retryable = presentation.canRetry,
+                    retryable = presentation.retryAction != null,
                     enabled = !state.isBusy,
-                    onRetry = { onAction(RoomsUiAction.RetryRoomDetails) }
+                    onRetry = {
+                        presentation.retryAction?.let(onAction)
+                    }
                 )
             }
         }
@@ -292,7 +293,7 @@ private data class RoomScreenPresentation(
     val room: Room?,
     val activeMembers: List<RoomMember>,
     val errorMessage: String?,
-    val canRetry: Boolean,
+    val retryAction: RoomsUiAction?,
     val showLoading: Boolean,
     val showUnavailable: Boolean,
     val showEmptyMembers: Boolean
@@ -319,8 +320,13 @@ private fun RoomsUiState.toRoomScreenPresentation(
         room = activeRoom,
         activeMembers = members,
         errorMessage = message,
-        canRetry = relevantError?.retryable == true &&
-            relevantError.operation in ROOM_DETAILS_RETRY_OPERATIONS,
+        retryAction = relevantError
+            ?.takeIf { error ->
+                error.retryable &&
+                    error.operation in ROOM_DETAILS_RETRY_OPERATIONS
+            }
+            ?.operation
+            ?.toRoomDetailsRetryAction(),
         showLoading = loading,
         showUnavailable = activeRoom == null && !loading && message == null,
         showEmptyMembers = activeRoom != null && members.isEmpty() && !isBusy
@@ -587,6 +593,7 @@ private val ROOM_DETAILS_ERROR_OPERATIONS = setOf(
     RoomSessionOperation.OPEN_ROOM,
     RoomSessionOperation.REFRESH_ROOM,
     RoomSessionOperation.REFRESH_MEMBERS,
+    RoomSessionOperation.DEACTIVATE,
     RoomSessionOperation.LEAVE,
     RoomSessionOperation.ARCHIVE
 )
@@ -594,8 +601,16 @@ private val ROOM_DETAILS_ERROR_OPERATIONS = setOf(
 private val ROOM_DETAILS_RETRY_OPERATIONS = setOf(
     RoomSessionOperation.OPEN_ROOM,
     RoomSessionOperation.REFRESH_ROOM,
-    RoomSessionOperation.REFRESH_MEMBERS
+    RoomSessionOperation.REFRESH_MEMBERS,
+    RoomSessionOperation.DEACTIVATE
 )
+
+private fun RoomSessionOperation.toRoomDetailsRetryAction(): RoomsUiAction =
+    if (this == RoomSessionOperation.DEACTIVATE) {
+        RoomsUiAction.DeactivateCurrentRoom
+    } else {
+        RoomsUiAction.RetryRoomDetails
+    }
 
 private fun Room.displayName(): String =
     name?.trim()?.takeIf(String::isNotEmpty) ?: "Unnamed room"

@@ -1,6 +1,7 @@
 package mme.corp.audioshare.data.repository
 
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import mme.corp.audioshare.data.api.RoomsApi
 import mme.corp.audioshare.data.dto.presence.PresenceState
@@ -8,6 +9,7 @@ import mme.corp.audioshare.data.dto.room.RoomMemberRole
 import mme.corp.audioshare.data.dto.room.RoomMemberState
 import mme.corp.audioshare.data.dto.room.RoomStatus
 import mme.corp.audioshare.data.dto.room.RoomVisibility
+import mme.corp.audioshare.data.storage.DeviceIdStore
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.exception.DeviceBootstrapRequiredException
 import mme.corp.audioshare.logging.AppLogger
@@ -19,7 +21,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
@@ -174,6 +178,134 @@ class RoomRepositoryTest {
     }
 
     @Test
+    fun activateRoomUsesEndpointDeviceIdAndMapsResponse() = runTest {
+        server.enqueue(roomResponse())
+        val repository = repository(FakeDeviceIdStore("device-id"))
+
+        val room = repository.activateRoom(" room-id ").getOrThrow()
+
+        assertEquals("room-id", room.id)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/v1/rooms/room-id/activate", request.path)
+        val body = JsonParser.parseString(request.body.readUtf8()).asJsonObject
+        assertEquals("device-id", body["deviceId"].asString)
+    }
+
+    @Test
+    fun deactivateRoomAcceptsNoContentAndSendsDeviceId() = runTest {
+        server.enqueue(MockResponse().setResponseCode(204))
+        val repository = repository(FakeDeviceIdStore("device-id"))
+
+        val result = repository.deactivateRoom("room-id")
+
+        assertTrue(result.isSuccess)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/v1/rooms/room-id/deactivate", request.path)
+        val body = JsonParser.parseString(request.body.readUtf8()).asJsonObject
+        assertEquals("device-id", body["deviceId"].asString)
+    }
+
+    @Test
+    fun activateRoomRejectsEmptySuccessfulResponse() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200))
+        val repository = repository(FakeDeviceIdStore("device-id"))
+
+        val result = repository.activateRoom("room-id")
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            "/api/v1/rooms/room-id/activate",
+            server.takeRequest().path
+        )
+    }
+
+    @Test
+    fun activateRoomMapsNullResponseToEmptyBodyFailure() = runTest {
+        server.enqueue(jsonResponse(200, "null"))
+        val repository = repository(FakeDeviceIdStore("device-id"))
+
+        val result = repository.activateRoom("room-id")
+
+        val exception = result.exceptionOrNull()
+        assertTrue(exception is IllegalStateException)
+        assertEquals(
+            "Activate room response body is empty",
+            exception?.message
+        )
+    }
+
+    @Test
+    fun activateRoomReturnsFailureForMalformedResponse() = runTest {
+        server.enqueue(jsonResponse(200, "{not-json"))
+        val repository = repository(FakeDeviceIdStore("device-id"))
+
+        val result = repository.activateRoom("room-id")
+
+        assertTrue(result.isFailure)
+        assertEquals(
+            "/api/v1/rooms/room-id/activate",
+            server.takeRequest().path
+        )
+    }
+
+    @Test
+    fun activationAndDeactivationMapServeRelayErrors() = runTest {
+        server.enqueue(apiErrorResponse(403, "ROOM_MEMBER_REQUIRED"))
+        server.enqueue(apiErrorResponse(403, "DEVICE_NOT_OWNED"))
+        val repository = repository(FakeDeviceIdStore("device-id"))
+
+        val activateError = repository.activateRoom("room-id")
+            .exceptionOrNull() as ApiException
+        val deactivateError = repository.deactivateRoom("room-id")
+            .exceptionOrNull() as ApiException
+
+        assertEquals(403, activateError.httpCode)
+        assertEquals("ROOM_MEMBER_REQUIRED", activateError.apiError.code)
+        assertEquals(403, deactivateError.httpCode)
+        assertEquals("DEVICE_NOT_OWNED", deactivateError.apiError.code)
+    }
+
+    @Test
+    fun activationOperationsValidateInputsBeforeNetworkCall() = runTest {
+        val missingDeviceRepository = repository(FakeDeviceIdStore())
+        val blankRoomRepository = repository(FakeDeviceIdStore("device-id"))
+
+        val missingDevice = missingDeviceRepository.activateRoom("room-id")
+        val blankActivate = blankRoomRepository.activateRoom("  ")
+        val blankDeactivate = blankRoomRepository.deactivateRoom("  ")
+
+        assertTrue(
+            missingDevice.exceptionOrNull() is DeviceBootstrapRequiredException
+        )
+        assertTrue(blankActivate.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(blankDeactivate.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun activationRethrowsDeviceStoreCancellation() = runTest {
+        val expected = CancellationException("cancelled")
+        val repository = repository(
+            object : DeviceIdStore {
+                override suspend fun getDeviceId(): String = throw expected
+
+                override suspend fun saveDeviceId(deviceId: String) = Unit
+            }
+        )
+
+        try {
+            repository.activateRoom("room-id")
+            fail("CancellationException must be rethrown")
+        } catch (actual: CancellationException) {
+            assertSame(expected, actual)
+        }
+
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun deviceActionWithoutDeviceIdFailsBeforeNetworkCall() = runTest {
         val logger = RecordingAppLogger()
         val repository = repository(FakeDeviceIdStore(), logger)
@@ -311,7 +443,7 @@ class RoomRepositoryTest {
     }
 
     private fun repository(
-        store: FakeDeviceIdStore,
+        store: DeviceIdStore,
         logger: AppLogger = AppLogger.NO_OP
     ): RoomRepository {
         val api = server.retrofit().create(RoomsApi::class.java)
@@ -348,6 +480,19 @@ class RoomRepositoryTest {
         .setResponseCode(code)
         .setHeader("Content-Type", "application/json")
         .setBody(body)
+
+    private fun apiErrorResponse(code: Int, apiCode: String): MockResponse =
+        jsonResponse(
+            code,
+            """
+            {
+              "code": "$apiCode",
+              "message": "Room operation failed",
+              "fieldErrors": {},
+              "timestamp": "2026-08-04T18:00:00"
+            }
+            """.trimIndent()
+        )
 
     private class RecordingAppLogger : AppLogger {
         val debugMessages = mutableListOf<String>()

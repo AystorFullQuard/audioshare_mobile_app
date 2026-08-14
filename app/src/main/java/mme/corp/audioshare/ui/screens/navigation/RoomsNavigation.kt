@@ -39,7 +39,6 @@ fun NavGraphBuilder.roomsDestinations(
                     ?.getString(Screen.ROOM_ID_ARGUMENT)
                     .orEmpty(),
                 coordinator = coordinator,
-                onBack = navController::popBackStack,
                 onNavigateRooms = navController::returnToRooms
             )
         }

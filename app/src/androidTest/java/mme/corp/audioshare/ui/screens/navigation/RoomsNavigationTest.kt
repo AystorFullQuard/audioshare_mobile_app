@@ -3,6 +3,7 @@ package mme.corp.audioshare.ui.screens.navigation
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.navigation.compose.ComposeNavigator
@@ -17,12 +18,16 @@ import mme.corp.audioshare.data.dto.room.RoomStatus
 import mme.corp.audioshare.data.dto.room.RoomVisibility
 import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.room.RoomSessionCoordinator
+import mme.corp.audioshare.room.RoomSessionError
+import mme.corp.audioshare.room.RoomSessionOperation
 import mme.corp.audioshare.room.RoomSessionState
+import mme.corp.audioshare.ui.screens.rooms.RoomUiTestTags
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.IOException
 
 @RunWith(AndroidJUnit4::class)
 class RoomsNavigationTest {
@@ -78,6 +83,95 @@ class RoomsNavigationTest {
         composeRule.runOnIdle {
             assertFalse(navController.popBackStack())
             assertEquals(1, coordinator.openCalls)
+        }
+    }
+
+    @Test
+    fun roomBackDeactivatesBeforeReturningToRooms() {
+        val current = room("room-1")
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        )
+        lateinit var navController: TestNavHostController
+
+        composeRule.setContent {
+            val context = LocalContext.current
+            navController = remember {
+                TestNavHostController(context).apply {
+                    navigatorProvider.addNavigator(ComposeNavigator())
+                }
+            }
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Rooms.route
+            ) {
+                roomsDestinations(navController, coordinator)
+            }
+        }
+
+        composeRule.onNodeWithText("Open").performClick()
+        composeRule.waitUntil {
+            navController.currentDestination?.route == Screen.Room.route
+        }
+
+        composeRule.onNodeWithTag(RoomUiTestTags.BACK).performClick()
+        composeRule.waitUntil {
+            navController.currentDestination?.route == Screen.Rooms.route
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(1, coordinator.deactivateCalls)
+            assertEquals(null, coordinator.state.value.currentRoom)
+            assertEquals(
+                listOf(current.id),
+                coordinator.state.value.rooms.map { it.id }
+            )
+        }
+    }
+
+    @Test
+    fun failedRoomBackKeepsRoomDestination() {
+        val current = room("room-1")
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        ).apply {
+            deactivateFailure = IOException("offline")
+        }
+        lateinit var navController: TestNavHostController
+
+        composeRule.setContent {
+            val context = LocalContext.current
+            navController = remember {
+                TestNavHostController(context).apply {
+                    navigatorProvider.addNavigator(ComposeNavigator())
+                }
+            }
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Rooms.route
+            ) {
+                roomsDestinations(navController, coordinator)
+            }
+        }
+
+        composeRule.onNodeWithText("Open").performClick()
+        composeRule.waitUntil {
+            navController.currentDestination?.route == Screen.Room.route
+        }
+
+        composeRule.onNodeWithTag(RoomUiTestTags.BACK).performClick()
+        composeRule.waitUntil { coordinator.deactivateCalls == 1 }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(Screen.Room.route, navController.currentDestination?.route)
+            assertEquals(current.id, coordinator.state.value.currentRoom?.id)
         }
     }
 
@@ -153,6 +247,9 @@ class RoomsNavigationTest {
 
         var openCalls: Int = 0
             private set
+        var deactivateCalls: Int = 0
+            private set
+        var deactivateFailure: Throwable? = null
 
         fun emit(state: RoomSessionState) {
             mutableState.value = state
@@ -187,6 +284,36 @@ class RoomsNavigationTest {
                 rooms = state.value.rooms
                     .filterNot { room -> room.id == roomId } + selected,
                 currentRoom = selected
+            )
+            emit(next)
+            return Result.success(next)
+        }
+
+        override suspend fun activateRoom(
+            roomId: String
+        ): Result<RoomSessionState> = Result.success(state.value)
+
+        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> {
+            deactivateCalls += 1
+            deactivateFailure?.let { exception ->
+                val roomId = state.value.currentRoom?.id
+                emit(
+                    state.value.copy(
+                        lastError = RoomSessionError(
+                            operation = RoomSessionOperation.DEACTIVATE,
+                            roomId = roomId,
+                            type = exception::class.java.simpleName,
+                            retryable = exception is IOException
+                        )
+                    )
+                )
+                return Result.failure(exception)
+            }
+
+            val next = state.value.copy(
+                currentRoom = null,
+                activeMembers = emptyList(),
+                lastError = null
             )
             emit(next)
             return Result.success(next)

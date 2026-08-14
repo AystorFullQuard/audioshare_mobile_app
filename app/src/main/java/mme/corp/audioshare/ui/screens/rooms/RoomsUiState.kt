@@ -16,6 +16,7 @@ data class RoomsUiState(
     val createVisibility: RoomVisibility = RoomVisibility.PRIVATE,
     val joinRoomIdInput: String = "",
     val roomDetailsRoomId: String? = null,
+    val roomExitPending: Boolean = false,
     val confirmation: RoomActionConfirmation? = null,
     val runningOperation: RoomsUiOperation? = null,
     val feedback: RoomsUiFeedback? = null,
@@ -36,10 +37,11 @@ data class RoomsUiState(
         get() = session.activeMembers
 
     val isBusy: Boolean
-        get() = runningOperation != null || session.isBusy
+        get() = roomExitPending || runningOperation != null || session.isBusy
 
     val isRoomTransitionRunning: Boolean
-        get() = runningOperation.isRoomTransition() ||
+        get() = roomExitPending ||
+            runningOperation.isRoomTransition() ||
             session.activeOperations.any(RoomSessionOperation::isRoomTransition)
 
     val isDestructiveOperationRunning: Boolean
@@ -66,6 +68,7 @@ enum class RoomActionConfirmation {
 enum class RoomsUiOperation {
     LOAD_ROOMS,
     OPEN_ROOM,
+    DEACTIVATE_ROOM,
     CREATE_ROOM,
     JOIN_ROOM,
     REFRESH_ROOM,
@@ -82,6 +85,7 @@ sealed interface RoomsUiAction {
 
     data object LoadRooms : RoomsUiAction
     data class OpenRoom(val roomId: String) : RoomsUiAction
+    data object DeactivateCurrentRoom : RoomsUiAction
     data class OpenRoomDetails(val roomId: String) : RoomsUiAction
     data object RetryRoomDetails : RoomsUiAction
     data object CreateRoom : RoomsUiAction
@@ -103,6 +107,7 @@ sealed interface RoomsUiEvent {
 
 private fun RoomsUiOperation?.isRoomTransition(): Boolean = when (this) {
     RoomsUiOperation.OPEN_ROOM,
+    RoomsUiOperation.DEACTIVATE_ROOM,
     RoomsUiOperation.CREATE_ROOM,
     RoomsUiOperation.JOIN_ROOM,
     RoomsUiOperation.LEAVE_ROOM,
@@ -117,6 +122,8 @@ private fun RoomsUiOperation?.isDestructiveTransition(): Boolean =
 
 private fun RoomSessionOperation.isRoomTransition(): Boolean = when (this) {
     RoomSessionOperation.OPEN_ROOM,
+    RoomSessionOperation.ACTIVATE,
+    RoomSessionOperation.DEACTIVATE,
     RoomSessionOperation.CREATE,
     RoomSessionOperation.JOIN,
     RoomSessionOperation.LEAVE,

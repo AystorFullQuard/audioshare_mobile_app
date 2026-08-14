@@ -294,130 +294,33 @@ class DefaultRoomSessionCoordinator(
         }
     }
 
-    override suspend fun openRoom(roomId: String): Result<RoomSessionState> {
+    override suspend fun openRoom(
+        roomId: String
+    ): Result<RoomSessionState> = activateRoomContext(
+        operation = RoomSessionOperation.OPEN_ROOM,
+        roomId = roomId
+    )
+
+    override suspend fun activateRoom(
+        roomId: String
+    ): Result<RoomSessionState> = activateRoomContext(
+        operation = RoomSessionOperation.ACTIVATE,
+        roomId = roomId
+    )
+
+    override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> {
         val expectedGeneration = requireSessionGeneration(
-            RoomSessionOperation.OPEN_ROOM
+            RoomSessionOperation.DEACTIVATE
         ).getOrElse { exception ->
             return Result.failure(exception)
         }
-        val resolvedRoomId = validateRoomId(roomId).getOrElse { exception ->
-            recordStandaloneFailureIfCurrent(
-                expectedGeneration,
-                RoomSessionOperation.OPEN_ROOM,
-                roomId,
-                exception
-            )
-            return Result.failure(exception)
-        }
+        val roomId = state.value.currentRoom?.id
+            ?: return completeIdempotentDeactivation(expectedGeneration)
 
-        if (state.value.currentRoom?.id != resolvedRoomId) {
-            // Selecting another active membership is a server lifecycle operation:
-            // the join endpoint also updates the server-authoritative currentRoomId.
-            return executeEnterRoomOperation(
-                operation = RoomSessionOperation.OPEN_ROOM,
-                roomId = resolvedRoomId,
-                expectedGeneration = expectedGeneration
-            ) {
-                roomClient.joinLocalDiscoveryRoom(resolvedRoomId)
-            }
-        }
-
-        val lease = beginOperation(
-            operation = RoomSessionOperation.OPEN_ROOM,
-            key = "open:$resolvedRoomId",
+        return executeDeactivateRoomOperation(
+            roomId = roomId,
             expectedGeneration = expectedGeneration
-        ).getOrElse { exception ->
-            return Result.failure(exception)
-        }
-
-        return try {
-            validateExpectedCurrentRoom(
-                lease = lease,
-                operation = RoomSessionOperation.OPEN_ROOM,
-                expectedRoomId = resolvedRoomId
-            ).getOrElse { exception ->
-                return Result.failure(exception)
-            }
-
-            val room = roomClient.getRoom(resolvedRoomId).getOrElse { exception ->
-                if (exception.indicatesRoomUnavailable()) {
-                    return reconcileUnavailableRoom(
-                        lease,
-                        resolvedRoomId,
-                        RoomSessionOperation.OPEN_ROOM,
-                        exception
-                    )
-                }
-                recordFailure(
-                    lease,
-                    RoomSessionOperation.OPEN_ROOM,
-                    resolvedRoomId,
-                    exception
-                )
-                return Result.failure(exception)
-            }
-            if (room.status == RoomStatus.ARCHIVED) {
-                return reconcileUnavailableRoom(
-                    lease,
-                    resolvedRoomId,
-                    RoomSessionOperation.OPEN_ROOM,
-                    ArchivedRoomSnapshotException()
-                )
-            }
-
-            val members = roomClient.getActiveMembers(resolvedRoomId)
-                .getOrElse { exception ->
-                    if (exception.indicatesRoomUnavailable()) {
-                        return reconcileUnavailableRoom(
-                            lease,
-                            resolvedRoomId,
-                            RoomSessionOperation.OPEN_ROOM,
-                            exception
-                        )
-                    }
-                    recordFailure(
-                        lease,
-                        RoomSessionOperation.OPEN_ROOM,
-                        resolvedRoomId,
-                        exception
-                    )
-                    return Result.failure(exception)
-                }
-
-            val committed = updateStateIfCurrent(lease) { current ->
-                val resolvedRoom = room
-                    .mergeMetadataFrom(
-                        current.rooms.firstOrNull { it.id == room.id }
-                    )
-                    .mergeMemberSnapshot(members)
-                RoomSessionReducer.reduce(
-                    current,
-                    RoomSessionMutation.RoomSelected(
-                        room = resolvedRoom,
-                        members = members
-                    )
-                ).copy(
-                    isConnected = true,
-                    isStale = false,
-                    lastError = null
-                )
-            }
-            if (!committed) {
-                return Result.failure(RoomSessionResetException())
-            }
-
-            logger.info(
-                TAG,
-                "Current room opened; roomId=$resolvedRoomId, " +
-                    "memberCount=${members.size}"
-            )
-            successfulState(lease)
-        } catch (exception: CancellationException) {
-            logCancellation(RoomSessionOperation.OPEN_ROOM, resolvedRoomId)
-            throw exception
-        } finally {
-            finishOperation(lease)
-        }
+        )
     }
 
     override suspend fun refreshCurrentRoom(): Result<RoomSessionState> {
@@ -629,7 +532,7 @@ class DefaultRoomSessionCoordinator(
         ).getOrElse { exception ->
             return Result.failure(exception)
         }
-        return executeEnterRoomOperation(
+        return executeMembershipOperation(
             operation = RoomSessionOperation.CREATE,
             roomId = null,
             expectedGeneration = expectedGeneration
@@ -656,7 +559,7 @@ class DefaultRoomSessionCoordinator(
             return Result.failure(exception)
         }
 
-        return executeEnterRoomOperation(
+        return executeMembershipOperation(
             operation = RoomSessionOperation.JOIN,
             roomId = resolvedRoomId,
             expectedGeneration = expectedGeneration
@@ -929,6 +832,76 @@ class DefaultRoomSessionCoordinator(
         presenceCoordinator.setDesiredState(null)
     }
 
+    private suspend fun activateRoomContext(
+        operation: RoomSessionOperation,
+        roomId: String
+    ): Result<RoomSessionState> {
+        val expectedGeneration = requireSessionGeneration(operation)
+            .getOrElse { exception ->
+                return Result.failure(exception)
+            }
+        val resolvedRoomId = validateRoomId(roomId).getOrElse { exception ->
+            recordStandaloneFailureIfCurrent(
+                expectedGeneration,
+                operation,
+                roomId,
+                exception
+            )
+            return Result.failure(exception)
+        }
+
+        return executeActiveRoomOperation(
+            operation = operation,
+            roomId = resolvedRoomId,
+            expectedGeneration = expectedGeneration
+        ) {
+            roomClient.activateRoom(resolvedRoomId)
+        }
+    }
+
+    private fun completeIdempotentDeactivation(
+        expectedGeneration: Long
+    ): Result<RoomSessionState> {
+        val lease = beginOperation(
+            operation = RoomSessionOperation.DEACTIVATE,
+            key = LIFECYCLE_KEY,
+            expectedGeneration = expectedGeneration
+        ).getOrElse { exception ->
+            return Result.failure(exception)
+        }
+
+        return try {
+            validateExpectedCurrentRoom(
+                lease = lease,
+                operation = RoomSessionOperation.DEACTIVATE,
+                expectedRoomId = null
+            ).getOrElse { exception ->
+                return Result.failure(exception)
+            }
+
+            val committed = updateStateAndPresenceIfCurrent(
+                lease = lease,
+                desiredPresence = PresenceState.ONLINE
+            ) { current ->
+                current.copy(
+                    activeMembers = emptyList(),
+                    lastError = null
+                )
+            }
+            if (!committed) {
+                Result.failure(RoomSessionResetException())
+            } else {
+                logger.debug(
+                    TAG,
+                    "Room deactivate treated as idempotent: no current room"
+                )
+                successfulState(lease)
+            }
+        } finally {
+            finishOperation(lease)
+        }
+    }
+
     private fun completeIdempotentExit(
         operation: RoomSessionOperation,
         expectedGeneration: Long
@@ -971,7 +944,7 @@ class DefaultRoomSessionCoordinator(
         }
     }
 
-    private suspend fun executeEnterRoomOperation(
+    private suspend fun executeActiveRoomOperation(
         operation: RoomSessionOperation,
         roomId: String?,
         expectedGeneration: Long,
@@ -1002,9 +975,9 @@ class DefaultRoomSessionCoordinator(
                     .withEnterDefaults(operation)
                 RoomSessionReducer.reduce(
                     current,
-                    RoomSessionMutation.RoomSelected(
-                        room = resolved,
-                        members = emptyList()
+                    roomEnterMutation(
+                        operation = operation,
+                        room = resolved
                     )
                 ).copy(
                     isConnected = true,
@@ -1034,6 +1007,108 @@ class DefaultRoomSessionCoordinator(
             successfulState(lease)
         } catch (exception: CancellationException) {
             logCancellation(operation, roomId)
+            throw exception
+        } finally {
+            finishOperation(lease)
+        }
+    }
+
+    private suspend fun executeMembershipOperation(
+        operation: RoomSessionOperation,
+        roomId: String?,
+        expectedGeneration: Long,
+        request: suspend () -> Result<Room>
+    ): Result<RoomSessionState> {
+        val lease = beginOperation(
+            operation = operation,
+            key = LIFECYCLE_KEY,
+            expectedGeneration = expectedGeneration
+        ).getOrElse { exception ->
+            return Result.failure(exception)
+        }
+
+        return try {
+            val room = request().getOrElse { exception ->
+                recordFailure(lease, operation, roomId, exception)
+                return Result.failure(exception)
+            }
+
+            val committed = updateStateIfCurrent(lease) { current ->
+                val resolved = room
+                    .mergeMetadataFrom(
+                        current.rooms.firstOrNull { it.id == room.id }
+                    )
+                    .withEnterDefaults(operation)
+                RoomSessionReducer.reduce(
+                    current,
+                    RoomSessionMutation.RoomDetailsUpdated(resolved)
+                ).copy(
+                    isConnected = true,
+                    lastError = null
+                )
+            }
+            if (!committed) {
+                return Result.failure(RoomSessionResetException())
+            }
+
+            logger.info(
+                TAG,
+                "Room ${operation.name.lowercase()} membership committed; " +
+                    "roomId=${room.id}, activeRoomChanged=false"
+            )
+            successfulState(lease)
+        } catch (exception: CancellationException) {
+            logCancellation(operation, roomId)
+            throw exception
+        } finally {
+            finishOperation(lease)
+        }
+    }
+
+    private suspend fun executeDeactivateRoomOperation(
+        roomId: String,
+        expectedGeneration: Long
+    ): Result<RoomSessionState> {
+        val lease = beginOperation(
+            operation = RoomSessionOperation.DEACTIVATE,
+            key = LIFECYCLE_KEY,
+            expectedGeneration = expectedGeneration
+        ).getOrElse { exception ->
+            return Result.failure(exception)
+        }
+
+        return try {
+            validateExpectedCurrentRoom(
+                lease = lease,
+                operation = RoomSessionOperation.DEACTIVATE,
+                expectedRoomId = roomId
+            ).getOrElse { exception ->
+                return Result.failure(exception)
+            }
+
+            roomClient.deactivateRoom(roomId).getOrElse { exception ->
+                recordFailure(
+                    lease,
+                    RoomSessionOperation.DEACTIVATE,
+                    roomId,
+                    exception
+                )
+                return Result.failure(exception)
+            }
+
+            val committed = commitDeactivationIfCurrent(lease, roomId)
+            if (!committed) {
+                return Result.failure(RoomSessionResetException())
+            }
+
+            logger.info(
+                TAG,
+                "Room deactivate committed; roomId=$roomId, " +
+                    "desiredPresence=ONLINE"
+            )
+            successfulState(lease)
+        } catch (exception: CancellationException) {
+            logCancellation(RoomSessionOperation.DEACTIVATE, roomId)
             throw exception
         } finally {
             finishOperation(lease)
@@ -1160,6 +1235,55 @@ class DefaultRoomSessionCoordinator(
             }
         }
     )
+
+    private fun commitDeactivationIfCurrent(
+        lease: OperationLease,
+        roomId: String
+    ): Boolean = synchronized(operationLock) {
+        synchronized(stateLock) {
+            if (!lease.isCurrent()) {
+                logger.debug(
+                    TAG,
+                    "Room deactivation ignored for stale operation; " +
+                        "leaseId=${lease.id}, roomId=$roomId"
+                )
+                false
+            } else if (mutableState.value.currentRoom?.id != roomId) {
+                logger.debug(
+                    TAG,
+                    "Room deactivation ignored after active room changed; " +
+                        "leaseId=${lease.id}, roomId=$roomId"
+                )
+                false
+            } else {
+                mutableState.value = RoomSessionReducer.reduce(
+                    mutableState.value,
+                    RoomSessionMutation.RoomDeactivated(roomId)
+                ).copy(
+                    isConnected = true,
+                    isStale = false,
+                    lastError = null
+                )
+                presenceCoordinator.setDesiredState(PresenceState.ONLINE)
+                true
+            }
+        }
+    }
+
+    private fun roomEnterMutation(
+        operation: RoomSessionOperation,
+        room: Room
+    ): RoomSessionMutation = if (operation == RoomSessionOperation.ACTIVATE) {
+        RoomSessionMutation.RoomActivated(
+            room = room,
+            members = emptyList()
+        )
+    } else {
+        RoomSessionMutation.RoomSelected(
+            room = room,
+            members = emptyList()
+        )
+    }
 
     private fun applyRoomsSnapshotIfCurrent(
         lease: OperationLease,

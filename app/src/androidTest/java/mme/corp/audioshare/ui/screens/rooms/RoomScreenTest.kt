@@ -14,7 +14,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
@@ -335,6 +337,147 @@ class RoomScreenTest {
     }
 
     @Test
+    fun toolbarBackDeactivatesAndNavigatesOnceKeepingMembership() {
+        val current = room(role = RoomMemberRole.MEMBER)
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        )
+        val navigationCalls = AtomicInteger(0)
+
+        composeRule.setContent {
+            RoomScreen(
+                roomId = current.id,
+                coordinator = coordinator,
+                onNavigateRooms = { navigationCalls.incrementAndGet() }
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(RoomUiTestTags.BACK).performClick()
+        composeRule.waitUntil { navigationCalls.get() == 1 }
+
+        assertEquals(1, coordinator.deactivateCalls)
+        assertEquals(listOf(current.id), coordinator.state.value.rooms.map { it.id })
+        assertEquals(null, coordinator.state.value.currentRoom)
+        composeRule.onNodeWithText("Room is not available.").assertDoesNotExist()
+        composeRule.onNodeWithTag(RoomUiTestTags.LOADING).assertExists()
+
+        composeRule.runOnIdle {
+            coordinator.emit(coordinator.state.value.copy())
+        }
+        composeRule.waitForIdle()
+        assertEquals(1, navigationCalls.get())
+    }
+
+    @Test
+    fun systemBackUsesSameDeactivateFlow() {
+        val current = room(role = RoomMemberRole.MEMBER)
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        )
+        val navigationCalls = AtomicInteger(0)
+
+        composeRule.setContent {
+            RoomScreen(
+                roomId = current.id,
+                coordinator = coordinator,
+                onNavigateRooms = { navigationCalls.incrementAndGet() }
+            )
+        }
+        composeRule.waitForIdle()
+
+        pressBack()
+        composeRule.waitUntil { navigationCalls.get() == 1 }
+
+        assertEquals(1, coordinator.deactivateCalls)
+        assertEquals(null, coordinator.state.value.currentRoom)
+        assertEquals(listOf(current.id), coordinator.state.value.rooms.map { it.id })
+    }
+
+    @Test
+    fun failedDeactivateStaysOnRoomAndRetryUsesDeactivateAgain() {
+        val current = room(role = RoomMemberRole.MEMBER)
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        ).apply {
+            deactivateFailuresRemaining = 1
+        }
+        val navigationCalls = AtomicInteger(0)
+
+        composeRule.setContent {
+            RoomScreen(
+                roomId = current.id,
+                coordinator = coordinator,
+                onNavigateRooms = { navigationCalls.incrementAndGet() }
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(RoomUiTestTags.BACK).performClick()
+        composeRule.waitUntil {
+            composeRule.onAllNodesWithText("Retry")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+
+        assertEquals(0, navigationCalls.get())
+        assertEquals(1, coordinator.deactivateCalls)
+        assertEquals(current.id, coordinator.state.value.currentRoom?.id)
+
+        composeRule.onNodeWithText("Retry").performClick()
+        composeRule.waitUntil { navigationCalls.get() == 1 }
+
+        assertEquals(2, coordinator.deactivateCalls)
+        assertEquals(null, coordinator.state.value.currentRoom)
+    }
+
+    @Test
+    fun inFlightDeactivateConsumesDuplicateSystemBack() {
+        val current = room(role = RoomMemberRole.MEMBER)
+        val gate = CompletableDeferred<Unit>()
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        ).apply {
+            deactivateGate = gate
+        }
+        val navigationCalls = AtomicInteger(0)
+
+        composeRule.setContent {
+            RoomScreen(
+                roomId = current.id,
+                coordinator = coordinator,
+                onNavigateRooms = { navigationCalls.incrementAndGet() }
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(RoomUiTestTags.BACK).performClick()
+        composeRule.waitUntil { coordinator.deactivateCalls == 1 }
+        composeRule.onNodeWithTag(RoomUiTestTags.BACK).assertIsNotEnabled()
+
+        pressBack()
+        composeRule.waitForIdle()
+        assertEquals(1, coordinator.deactivateCalls)
+        assertEquals(0, navigationCalls.get())
+
+        composeRule.runOnIdle { gate.complete(Unit) }
+        composeRule.waitUntil { navigationCalls.get() == 1 }
+        assertEquals(1, coordinator.deactivateCalls)
+    }
+
+    @Test
     fun ownerArchiveSuccessNavigatesBackOnce() {
         val current = room(role = RoomMemberRole.OWNER)
         val coordinator = FakeRoomSessionCoordinator(
@@ -346,7 +489,6 @@ class RoomScreenTest {
             RoomScreen(
                 roomId = current.id,
                 coordinator = coordinator,
-                onBack = {},
                 onNavigateRooms = { navigationCalls.incrementAndGet() }
             )
         }
@@ -381,7 +523,6 @@ class RoomScreenTest {
             RoomScreen(
                 roomId = current.id,
                 coordinator = coordinator,
-                onBack = {},
                 onNavigateRooms = { navigationCalls.incrementAndGet() }
             )
         }
@@ -416,7 +557,6 @@ class RoomScreenTest {
             RoomScreen(
                 roomId = current.id,
                 coordinator = coordinator,
-                onBack = {},
                 onNavigateRooms = { navigationCalls.incrementAndGet() }
             )
         }
@@ -450,7 +590,6 @@ class RoomScreenTest {
             RoomScreen(
                 roomId = current.id,
                 coordinator = coordinator,
-                onBack = {},
                 onNavigateRooms = {}
             )
         }
@@ -516,8 +655,11 @@ class RoomScreenTest {
         override val state: StateFlow<RoomSessionState> = mutableState
 
         var openCalls = 0
+        var deactivateCalls = 0
         var leaveCalls = 0
         var archiveCalls = 0
+        var deactivateFailuresRemaining = 0
+        var deactivateGate: CompletableDeferred<Unit>? = null
         var leaveFailure: Throwable? = null
         var archiveFailure: Throwable? = null
 
@@ -548,6 +690,40 @@ class RoomScreenTest {
         override suspend fun openRoom(roomId: String): Result<RoomSessionState> {
             openCalls += 1
             return Result.success(state.value)
+        }
+
+        override suspend fun activateRoom(
+            roomId: String
+        ): Result<RoomSessionState> = Result.success(state.value)
+
+        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> {
+            deactivateCalls += 1
+            deactivateGate?.await()
+
+            if (deactivateFailuresRemaining > 0) {
+                deactivateFailuresRemaining -= 1
+                val roomId = state.value.currentRoom?.id
+                val exception = IOException("offline")
+                emit(
+                    state.value.copy(
+                        lastError = RoomSessionError(
+                            operation = RoomSessionOperation.DEACTIVATE,
+                            roomId = roomId,
+                            type = IOException::class.java.simpleName,
+                            retryable = true
+                        )
+                    )
+                )
+                return Result.failure(exception)
+            }
+
+            val next = state.value.copy(
+                currentRoom = null,
+                activeMembers = emptyList(),
+                lastError = null
+            )
+            emit(next)
+            return Result.success(next)
         }
 
         override suspend fun refreshCurrentRoom(): Result<RoomSessionState> =

@@ -39,6 +39,10 @@ interface RoomSessionCoordinator :
 
     suspend fun openRoom(roomId: String): Result<RoomSessionState>
 
+    suspend fun activateRoom(roomId: String): Result<RoomSessionState>
+
+    suspend fun deactivateCurrentRoom(): Result<RoomSessionState>
+
     suspend fun refreshCurrentRoom(): Result<RoomSessionState>
 
     suspend fun refreshActiveMembers(): Result<RoomSessionState>

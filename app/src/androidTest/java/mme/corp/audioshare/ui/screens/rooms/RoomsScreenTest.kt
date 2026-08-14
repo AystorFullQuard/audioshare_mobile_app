@@ -6,6 +6,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -389,7 +390,50 @@ class RoomsScreenTest {
     }
 
     @Test
-    fun successfulJoinNavigatesOnceAfterRecomposition() {
+    fun successfulCreateStaysOnRoomsListAndShowsFeedback() {
+        val coordinator = FakeRoomSessionCoordinator()
+        val navigationCalls = AtomicInteger(0)
+
+        composeRule.setContent {
+            RoomsScreen(
+                coordinator = coordinator,
+                onBack = {},
+                onNavigateRoom = { navigationCalls.incrementAndGet() },
+                onNavigateRooms = {}
+            )
+        }
+
+        scrollToTag(RoomsUiTestTags.CREATE_NAME)
+        composeRule
+            .onNodeWithTag(RoomsUiTestTags.CREATE_NAME)
+            .performTextInput("Team room")
+        composeRule
+            .onNodeWithTag(RoomsUiTestTags.CREATE_SUBMIT)
+            .performClick()
+
+        composeRule.waitUntil {
+            composeRule
+                .onAllNodesWithText("Room created. Use Open to enter it.")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+
+        assertEquals(0, navigationCalls.get())
+        assertEquals(1, coordinator.createCalls)
+        assertEquals(null, coordinator.state.value.currentRoom)
+        assertEquals(
+            listOf("created-room"),
+            coordinator.state.value.rooms.map { it.id }
+        )
+        composeRule
+            .onNodeWithTag(RoomsUiTestTags.CREATE_NAME)
+            .assertTextContains(value = "", substring = false)
+        scrollToText("Team room")
+        composeRule.onNodeWithText("Team room").assertExists()
+    }
+
+    @Test
+    fun successfulJoinStaysOnRoomsListAfterRecomposition() {
         val coordinator = FakeRoomSessionCoordinator()
         val navigationCalls = AtomicInteger(0)
         val recompositionTick = mutableIntStateOf(0)
@@ -399,10 +443,7 @@ class RoomsScreenTest {
                 RoomsScreen(
                     coordinator = coordinator,
                     onBack = {},
-                    onNavigateRoom = { roomId ->
-                        assertEquals("room-2", roomId)
-                        navigationCalls.incrementAndGet()
-                    },
+                    onNavigateRoom = { navigationCalls.incrementAndGet() },
                     onNavigateRooms = {}
                 )
             }
@@ -417,7 +458,10 @@ class RoomsScreenTest {
             .performClick()
 
         composeRule.waitUntil {
-            navigationCalls.get() == 1
+            composeRule
+                .onAllNodesWithText("Room joined. Use Open to enter it.")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
 
         composeRule.runOnIdle {
@@ -425,8 +469,16 @@ class RoomsScreenTest {
         }
         composeRule.waitForIdle()
 
-        assertEquals(1, navigationCalls.get())
+        assertEquals(0, navigationCalls.get())
         assertEquals(1, coordinator.joinCalls)
+        assertEquals(null, coordinator.state.value.currentRoom)
+        assertEquals(listOf("room-2"), coordinator.state.value.rooms.map { it.id })
+        scrollToTag(RoomsUiTestTags.JOIN_ID)
+        composeRule
+            .onNodeWithTag(RoomsUiTestTags.JOIN_ID)
+            .assertTextContains(value = "", substring = false)
+        scrollToText("Joined room")
+        composeRule.onNodeWithText("Joined room").assertExists()
     }
 
     @Test
@@ -483,6 +535,7 @@ class RoomsScreenTest {
         private val mutableState = MutableStateFlow(initialState)
         override val state: StateFlow<RoomSessionState> = mutableState
 
+        var createCalls = 0
         var joinCalls = 0
         var joinFailure: Throwable? = null
 
@@ -509,6 +562,13 @@ class RoomsScreenTest {
         override suspend fun openRoom(roomId: String): Result<RoomSessionState> =
             Result.success(state.value)
 
+        override suspend fun activateRoom(
+            roomId: String
+        ): Result<RoomSessionState> = Result.success(state.value)
+
+        override suspend fun deactivateCurrentRoom(): Result<RoomSessionState> =
+            Result.success(state.value)
+
         override suspend fun refreshCurrentRoom(): Result<RoomSessionState> =
             Result.success(state.value)
 
@@ -518,7 +578,22 @@ class RoomsScreenTest {
         override suspend fun createRoom(
             name: String?,
             visibility: RoomVisibility
-        ): Result<RoomSessionState> = Result.success(state.value)
+        ): Result<RoomSessionState> {
+            createCalls += 1
+            val created = room(
+                id = "created-room",
+                name = name,
+                visibility = visibility,
+                role = RoomMemberRole.OWNER
+            )
+            val next = state.value.copy(
+                rooms = state.value.rooms
+                    .filterNot { it.id == created.id } + created,
+                lastError = null
+            )
+            mutableState.value = next
+            return Result.success(next)
+        }
 
         override suspend fun joinLocalDiscoveryRoom(
             roomId: String
@@ -527,9 +602,10 @@ class RoomsScreenTest {
             joinFailure?.let { return Result.failure(it) }
 
             val joined = room(roomId, "Joined room")
-            val next = RoomSessionState(
-                rooms = listOf(joined),
-                currentRoom = joined
+            val next = state.value.copy(
+                rooms = state.value.rooms
+                    .filterNot { it.id == joined.id } + joined,
+                lastError = null
             )
             mutableState.value = next
             return Result.success(next)

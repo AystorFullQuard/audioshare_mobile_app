@@ -23,6 +23,15 @@ sealed interface RoomSessionMutation {
         val members: List<RoomMember>
     ) : RoomSessionMutation
 
+    data class RoomActivated(
+        val room: Room,
+        val members: List<RoomMember>
+    ) : RoomSessionMutation
+
+    data class RoomDeactivated(
+        val roomId: String
+    ) : RoomSessionMutation
+
     data class RoomDetailsUpdated(
         val room: Room
     ) : RoomSessionMutation
@@ -56,6 +65,16 @@ object RoomSessionReducer {
         )
 
         is RoomSessionMutation.RoomSelected -> reduceRoomSelected(
+            state,
+            mutation
+        )
+
+        is RoomSessionMutation.RoomActivated -> reduceRoomActivated(
+            state,
+            mutation
+        )
+
+        is RoomSessionMutation.RoomDeactivated -> reduceRoomDeactivated(
             state,
             mutation
         )
@@ -121,11 +140,42 @@ object RoomSessionReducer {
     private fun reduceRoomSelected(
         state: RoomSessionState,
         mutation: RoomSessionMutation.RoomSelected
-    ): RoomSessionState = state.copy(
-        rooms = state.rooms.upsert(mutation.room),
-        currentRoom = mutation.room,
-        activeMembers = mutation.members
+    ): RoomSessionState = selectRoom(
+        state = state,
+        room = mutation.room,
+        members = mutation.members
     )
+
+    private fun reduceRoomActivated(
+        state: RoomSessionState,
+        mutation: RoomSessionMutation.RoomActivated
+    ): RoomSessionState = selectRoom(
+        state = state,
+        room = mutation.room,
+        members = mutation.members
+    )
+
+    private fun selectRoom(
+        state: RoomSessionState,
+        room: Room,
+        members: List<RoomMember>
+    ): RoomSessionState = state.copy(
+        rooms = state.rooms.upsert(room),
+        currentRoom = room,
+        activeMembers = members
+    )
+
+    private fun reduceRoomDeactivated(
+        state: RoomSessionState,
+        mutation: RoomSessionMutation.RoomDeactivated
+    ): RoomSessionState = if (state.currentRoom?.id == mutation.roomId) {
+        state.copy(
+            currentRoom = null,
+            activeMembers = emptyList()
+        )
+    } else {
+        state
+    }
 
     private fun reduceRoomDetailsUpdated(
         state: RoomSessionState,

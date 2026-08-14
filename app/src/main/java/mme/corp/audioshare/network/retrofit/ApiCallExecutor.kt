@@ -11,18 +11,31 @@ private val errorGson = Gson()
 internal suspend fun <T : Any> executeApiCall(
     emptyBodyMessage: String,
     call: suspend () -> Response<T>
-): Result<T> {
+): Result<T> = executeApiResponse(call) { response ->
+    val body = response.body()
+
+    if (body != null) {
+        Result.success(body)
+    } else {
+        Result.failure(IllegalStateException(emptyBodyMessage))
+    }
+}
+
+internal suspend fun executeApiCallWithoutBody(
+    call: suspend () -> Response<Unit>
+): Result<Unit> = executeApiResponse(call) {
+    Result.success(Unit)
+}
+
+private suspend fun <T, R> executeApiResponse(
+    call: suspend () -> Response<T>,
+    onSuccess: (Response<T>) -> Result<R>
+): Result<R> {
     return try {
         val response = call()
 
         if (response.isSuccessful) {
-            val body = response.body()
-
-            if (body != null) {
-                Result.success(body)
-            } else {
-                Result.failure(IllegalStateException(emptyBodyMessage))
-            }
+            onSuccess(response)
         } else {
             Result.failure(response.toApiException())
         }
