@@ -96,6 +96,8 @@ class RoomsViewModel(
             RoomsUiAction.DeactivateCurrentRoom -> deactivateCurrentRoom()
             is RoomsUiAction.OpenRoomDetails ->
                 openRoomDetails(action.roomId, force = false)
+            is RoomsUiAction.RefreshVisibleRoom ->
+                refreshVisibleRoom(action.roomId)
             RoomsUiAction.RetryRoomDetails -> retryRoomDetails()
             RoomsUiAction.CreateRoom -> createRoom()
             RoomsUiAction.JoinLocalDiscoveryRoom -> joinLocalDiscoveryRoom()
@@ -411,9 +413,42 @@ class RoomsViewModel(
         emitEvent(RoomsUiEvent.NavigateToRooms)
     }
 
+    private fun refreshVisibleRoom(rawRoomId: String) {
+        if (isActionBlocked()) return
+
+        val roomId = rawRoomId.normalizedRoomId() ?: return
+        val activeRoom = coordinator.state.value.currentRoom
+        if (activeRoom?.id != roomId || activeRoom.status != RoomStatus.ACTIVE) {
+            return
+        }
+
+        refreshCurrentRoom(
+            expectedRoomId = roomId,
+            showSuccessFeedback = false,
+            onAccepted = {
+                prepareRoomDetailsTarget(roomId)
+                roomDetailsWasAvailable = true
+                roomDetailsLoadAttemptedForId = roomId
+            }
+        )
+    }
+
     private fun refreshCurrentRoom() {
-        val expectedRoomId = currentRoomActionId()
-        launchAction(RoomsUiOperation.REFRESH_ROOM) {
+        refreshCurrentRoom(
+            expectedRoomId = currentRoomActionId(),
+            showSuccessFeedback = true
+        )
+    }
+
+    private fun refreshCurrentRoom(
+        expectedRoomId: String?,
+        showSuccessFeedback: Boolean,
+        onAccepted: () -> Unit = {}
+    ) {
+        launchAction(
+            operation = RoomsUiOperation.REFRESH_ROOM,
+            onAccepted = onAccepted
+        ) {
             val roomState = coordinator.refreshCurrentRoom()
                 .getOrElse { exception ->
                     showFailure(
@@ -447,7 +482,7 @@ class RoomsViewModel(
                     membersState,
                     RoomSessionOperation.REFRESH_MEMBERS,
                     expectedRoomId
-                )
+                ) && showSuccessFeedback
             ) {
                 showFeedback("Room refreshed.")
             }

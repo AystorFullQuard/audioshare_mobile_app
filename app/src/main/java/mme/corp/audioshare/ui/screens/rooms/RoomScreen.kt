@@ -43,6 +43,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.dto.presence.PresenceState
 import mme.corp.audioshare.data.dto.room.RoomMemberRole
 import mme.corp.audioshare.data.dto.room.RoomMemberState
@@ -112,8 +114,12 @@ internal fun RoomScreen(
         }
     }
 
-    LaunchedEffect(viewModel, lifecycleOwner) {
+    LaunchedEffect(roomId, viewModel, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            launch {
+                viewModel.uiState.first { current -> !current.isBusy }
+                viewModel.onAction(RoomsUiAction.RefreshVisibleRoom(roomId))
+            }
             viewModel.events.collect { event ->
                 when (event) {
                     is RoomsUiEvent.NavigateToRoom -> Unit
@@ -606,10 +612,11 @@ private val ROOM_DETAILS_RETRY_OPERATIONS = setOf(
 )
 
 private fun RoomSessionOperation.toRoomDetailsRetryAction(): RoomsUiAction =
-    if (this == RoomSessionOperation.DEACTIVATE) {
-        RoomsUiAction.DeactivateCurrentRoom
-    } else {
-        RoomsUiAction.RetryRoomDetails
+    when (this) {
+        RoomSessionOperation.DEACTIVATE -> RoomsUiAction.DeactivateCurrentRoom
+        RoomSessionOperation.REFRESH_ROOM,
+        RoomSessionOperation.REFRESH_MEMBERS -> RoomsUiAction.RefreshCurrentRoom
+        else -> RoomsUiAction.RetryRoomDetails
     }
 
 private fun Room.displayName(): String =

@@ -191,6 +191,39 @@ class RoomScreenTest {
     }
 
     @Test
+    fun refreshErrorRetryUsesRefreshWithoutReopeningRoom() {
+        val actions = mutableListOf<RoomsUiAction>()
+        val current = room(role = RoomMemberRole.MEMBER)
+        composeRule.setContent {
+            RoomScreenContent(
+                roomId = current.id,
+                state = RoomsUiState(
+                    roomDetailsRoomId = current.id,
+                    session = RoomSessionState(
+                        currentRoom = current,
+                        lastError = RoomSessionError(
+                            operation = RoomSessionOperation.REFRESH_MEMBERS,
+                            roomId = current.id,
+                            type = IOException::class.java.simpleName,
+                            retryable = true
+                        )
+                    ),
+                    sessionErrorMessage = "Unable to refresh the room."
+                ),
+                onAction = actions::add,
+                onBack = {}
+            )
+        }
+
+        composeRule.onNodeWithText("Retry").performClick()
+
+        composeRule.runOnIdle {
+            assertTrue(actions.contains(RoomsUiAction.RefreshCurrentRoom))
+            assertTrue(actions.none { it == RoomsUiAction.RetryRoomDetails })
+        }
+    }
+
+    @Test
     fun ownerSeesArchiveButNotLeaveAction() {
         setRoomContent(room(role = RoomMemberRole.OWNER))
 
@@ -577,6 +610,42 @@ class RoomScreenTest {
     }
 
     @Test
+    fun visibleRoomRefreshesOnceWithoutReopeningAfterStateRecomposition() {
+        val current = room(role = RoomMemberRole.MEMBER)
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        )
+
+        composeRule.setContent {
+            RoomScreen(
+                roomId = current.id,
+                coordinator = coordinator,
+                onNavigateRooms = {}
+            )
+        }
+
+        composeRule.waitUntil {
+            coordinator.refreshRoomCalls == 1 &&
+                coordinator.refreshMembersCalls == 1
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(0, coordinator.openCalls)
+
+        composeRule.runOnIdle {
+            coordinator.emit(coordinator.state.value.copy())
+        }
+        composeRule.waitForIdle()
+
+        assertEquals(1, coordinator.refreshRoomCalls)
+        assertEquals(1, coordinator.refreshMembersCalls)
+        assertEquals(0, coordinator.openCalls)
+    }
+
+    @Test
     fun busyCoordinatorDefersInitializationWithoutReloadingCurrentRoom() {
         val current = room(role = RoomMemberRole.MEMBER)
         val coordinator = FakeRoomSessionCoordinator(
@@ -600,6 +669,10 @@ class RoomScreenTest {
             coordinator.emit(
                 RoomSessionState(currentRoom = current)
             )
+        }
+        composeRule.waitUntil {
+            coordinator.refreshRoomCalls == 1 &&
+                coordinator.refreshMembersCalls == 1
         }
         composeRule.waitForIdle()
         scrollToTag(RoomUiTestTags.LEAVE)
@@ -658,6 +731,8 @@ class RoomScreenTest {
         var deactivateCalls = 0
         var leaveCalls = 0
         var archiveCalls = 0
+        var refreshRoomCalls = 0
+        var refreshMembersCalls = 0
         var deactivateFailuresRemaining = 0
         var deactivateGate: CompletableDeferred<Unit>? = null
         var leaveFailure: Throwable? = null
@@ -726,11 +801,15 @@ class RoomScreenTest {
             return Result.success(next)
         }
 
-        override suspend fun refreshCurrentRoom(): Result<RoomSessionState> =
-            Result.success(state.value)
+        override suspend fun refreshCurrentRoom(): Result<RoomSessionState> {
+            refreshRoomCalls += 1
+            return Result.success(state.value)
+        }
 
-        override suspend fun refreshActiveMembers(): Result<RoomSessionState> =
-            Result.success(state.value)
+        override suspend fun refreshActiveMembers(): Result<RoomSessionState> {
+            refreshMembersCalls += 1
+            return Result.success(state.value)
+        }
 
         override suspend fun createRoom(
             name: String?,

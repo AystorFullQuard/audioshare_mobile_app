@@ -492,6 +492,76 @@ class RoomsViewModelTest {
     }
 
     @Test
+    fun visibleRoomRefreshLoadsDetailsThenMembersWithoutSuccessFeedback() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+
+            viewModel.onAction(RoomsUiAction.RefreshVisibleRoom("  room-1  "))
+            advanceUntilIdle()
+
+            assertEquals(listOf("room", "members"), coordinator.refreshOrder)
+            assertEquals(0, coordinator.openCalls)
+            assertEquals("room-1", viewModel.uiState.value.roomDetailsRoomId)
+            assertNull(viewModel.uiState.value.feedback)
+        }
+
+    @Test
+    fun visibleRoomRefreshIgnoresDifferentActiveRoom() = runTest(dispatcher) {
+        val current = room("room-1")
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current, room("room-2")),
+                currentRoom = current
+            )
+        )
+        val viewModel = RoomsViewModel(coordinator)
+
+        viewModel.onAction(RoomsUiAction.RefreshVisibleRoom("room-2"))
+        advanceUntilIdle()
+
+        assertTrue(coordinator.refreshOrder.isEmpty())
+        assertNull(viewModel.uiState.value.roomDetailsRoomId)
+        assertEquals("room-1", viewModel.uiState.value.currentRoom?.id)
+    }
+
+    @Test
+    fun visibleRoomRefreshFailureKeepsRoomAndDoesNotNavigate() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            ).apply {
+                refreshRoomResult = Result.failure(IOException("offline"))
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+
+            viewModel.onAction(RoomsUiAction.RefreshVisibleRoom("room-1"))
+            advanceUntilIdle()
+
+            assertEquals(listOf("room"), coordinator.refreshOrder)
+            assertEquals("room-1", viewModel.uiState.value.currentRoom?.id)
+            assertTrue(observedEvents.isEmpty())
+            assertTrue(viewModel.uiState.value.feedback?.isError == true)
+            collector.cancel()
+        }
+
+    @Test
     fun refreshThatRemovesCurrentRoomSkipsMembersAndNavigatesBack() =
         runTest(dispatcher) {
             val current = room("room-1")
