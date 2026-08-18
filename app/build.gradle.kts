@@ -22,8 +22,30 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            buildConfigField(
+                "long",
+                "ROOM_MEMBER_POLL_INTERVAL_MILLIS",
+                "5000L"
+            )
+            buildConfigField(
+                "long",
+                "ROOM_MEMBER_POLL_MAX_BACKOFF_MILLIS",
+                "60000L"
+            )
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField(
+                "long",
+                "ROOM_MEMBER_POLL_INTERVAL_MILLIS",
+                "15000L"
+            )
+            buildConfigField(
+                "long",
+                "ROOM_MEMBER_POLL_MAX_BACKOFF_MILLIS",
+                "120000L"
+            )
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

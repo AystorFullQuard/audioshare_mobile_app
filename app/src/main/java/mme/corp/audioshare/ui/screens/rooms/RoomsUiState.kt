@@ -39,6 +39,16 @@ data class RoomsUiState(
     val isBusy: Boolean
         get() = roomExitPending || runningOperation != null || session.isBusy
 
+    val isBackgroundMemberRefreshRunning: Boolean
+        get() = runningOperation == null &&
+            session.activeOperations.isNotEmpty() &&
+            session.activeOperations.all { operation ->
+                operation == RoomSessionOperation.REFRESH_MEMBERS
+            }
+
+    val isInteractionBlocked: Boolean
+        get() = isBusy && !isBackgroundMemberRefreshRunning
+
     val isRoomTransitionRunning: Boolean
         get() = roomExitPending ||
             runningOperation.isRoomTransition() ||
