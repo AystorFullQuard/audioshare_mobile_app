@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.api.PresenceApi
@@ -73,6 +74,7 @@ class AppContainer(
         DefaultPresenceHeartbeatCoordinator(
             presenceClient = presenceRepository,
             scope = applicationScope,
+            heartbeatIntervalMillis = BuildConfig.PRESENCE_HEARTBEAT_INTERVAL_MILLIS,
             logger = appLogger
         )
 

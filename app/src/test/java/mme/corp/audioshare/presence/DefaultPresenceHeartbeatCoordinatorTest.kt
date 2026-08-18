@@ -94,6 +94,7 @@ class DefaultPresenceHeartbeatCoordinatorTest {
         val coordinator = DefaultPresenceHeartbeatCoordinator(
             presenceClient = client,
             scope = backgroundScope,
+            heartbeatIntervalMillis = 30_000,
             retryDelaysMillis = listOf(2_000)
         )
 
@@ -124,6 +125,7 @@ class DefaultPresenceHeartbeatCoordinatorTest {
         val coordinator = DefaultPresenceHeartbeatCoordinator(
             presenceClient = client,
             scope = backgroundScope,
+            heartbeatIntervalMillis = 30_000,
             retryDelaysMillis = listOf(100, 200)
         )
 
@@ -153,6 +155,7 @@ class DefaultPresenceHeartbeatCoordinatorTest {
         val coordinator = DefaultPresenceHeartbeatCoordinator(
             presenceClient = client,
             scope = backgroundScope,
+            heartbeatIntervalMillis = 30_000,
             retryDelaysMillis = emptyList()
         )
         coordinator.setDesiredState(PresenceState.IN_ROOM)
@@ -236,6 +239,7 @@ class DefaultPresenceHeartbeatCoordinatorTest {
         val coordinator = DefaultPresenceHeartbeatCoordinator(
             presenceClient = client,
             scope = backgroundScope,
+            heartbeatIntervalMillis = 30_000,
             retryDelaysMillis = emptyList()
         )
         var terminalEventObserved = false

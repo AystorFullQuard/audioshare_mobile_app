@@ -25,6 +25,11 @@ android {
         getByName("debug") {
             buildConfigField(
                 "long",
+                "PRESENCE_HEARTBEAT_INTERVAL_MILLIS",
+                "5000L"
+            )
+            buildConfigField(
+                "long",
                 "ROOM_MEMBER_POLL_INTERVAL_MILLIS",
                 "5000L"
             )
@@ -36,6 +41,11 @@ android {
         }
         release {
             isMinifyEnabled = false
+            buildConfigField(
+                "long",
+                "PRESENCE_HEARTBEAT_INTERVAL_MILLIS",
+                "30000L"
+            )
             buildConfigField(
                 "long",
                 "ROOM_MEMBER_POLL_INTERVAL_MILLIS",

@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class DefaultPresenceHeartbeatCoordinator(
     private val presenceClient: PresenceHeartbeatClient,
     private val scope: CoroutineScope,
-    private val heartbeatIntervalMillis: Long = DEFAULT_HEARTBEAT_INTERVAL_MILLIS,
+    private val heartbeatIntervalMillis: Long,
     private val retryDelaysMillis: List<Long> = DEFAULT_RETRY_DELAYS_MILLIS,
     private val logger: AppLogger = AppLogger.NO_OP
 ) : PresenceHeartbeatCoordinator {
@@ -346,7 +346,6 @@ class DefaultPresenceHeartbeatCoordinator(
         const val TAG = "PresenceHeartbeat"
         const val KEEP_CURRENT_STATE = "KEEP_CURRENT"
         const val NONE = "NONE"
-        const val DEFAULT_HEARTBEAT_INTERVAL_MILLIS = 30_000L
         const val PRESENCE_STATE_INVALID = "PRESENCE_STATE_INVALID"
 
         val DEFAULT_RETRY_DELAYS_MILLIS = listOf(
