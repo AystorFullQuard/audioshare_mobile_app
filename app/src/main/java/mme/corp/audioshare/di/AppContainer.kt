@@ -21,6 +21,7 @@ import mme.corp.audioshare.presence.AppPresenceLifecycleObserver
 import mme.corp.audioshare.presence.DefaultPresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceLifecycleManager
 import mme.corp.audioshare.room.DefaultRoomSessionCoordinator
+import mme.corp.audioshare.runtime.SessionRuntimeReconciler
 import mme.corp.audioshare.startup.BootstrapStartupCoordinator
 
 class AppContainer(
@@ -88,9 +89,19 @@ class AppContainer(
             logger = appLogger
         )
 
+    val sessionRuntimeReconciler =
+        SessionRuntimeReconciler(
+            roomSessionCoordinator = roomSessionCoordinator,
+            heartbeatCoordinator = presenceHeartbeatCoordinator,
+            presenceRuntimeController = presenceLifecycleManager,
+            scope = applicationScope,
+            logger = appLogger
+        )
+
     val presenceLifecycleObserver =
         AppPresenceLifecycleObserver(
-            lifecycleManager = presenceLifecycleManager
+            lifecycleManager = presenceLifecycleManager,
+            sessionRuntimeReconciler = sessionRuntimeReconciler
         )
 
     val bootstrapStartupCoordinator =

@@ -1,20 +1,24 @@
 package mme.corp.audioshare.presence
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import mme.corp.audioshare.data.dto.presence.PresenceState
 import mme.corp.audioshare.data.model.presence.PresenceSnapshot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PresenceLifecycleManagerTest {
 
     @Test
-    fun runtimeStartsOnlyAfterBootstrapAndWhileForeground() {
+    fun runtimeStartsOnlyAfterBootstrapAndForegroundReconciliation() {
         val coordinator = FakeCoordinator()
         val manager = PresenceLifecycleManager(coordinator)
 
-        manager.onAppForeground()
+        assertFalse(manager.onAppForeground())
         assertEquals(emptyList<Boolean>(), coordinator.starts)
 
         manager.activateAfterInitialHeartbeat()
@@ -23,14 +27,33 @@ class PresenceLifecycleManagerTest {
         manager.onAppBackground()
         assertEquals(1, coordinator.stopCount)
 
-        manager.onAppForeground()
-        assertEquals(listOf(false, true), coordinator.starts)
+        assertTrue(manager.onAppForeground())
+        assertEquals(listOf(false), coordinator.starts)
+
+        manager.resumeAfterReconciliation()
+        assertEquals(listOf(false, false), coordinator.starts)
 
         manager.stop()
-        manager.onAppForeground()
+        assertFalse(manager.onAppForeground())
+        manager.resumeAfterReconciliation()
 
-        assertEquals(listOf(false, true), coordinator.starts)
+        assertEquals(listOf(false, false), coordinator.starts)
         assertEquals(2, coordinator.stopCount)
+    }
+
+    @Test
+    fun reconciliationCompletionDoesNotResumeHeartbeatAfterBackground() {
+        val coordinator = FakeCoordinator()
+        val manager = PresenceLifecycleManager(coordinator)
+
+        manager.onAppForeground()
+        manager.activateAfterInitialHeartbeat()
+        manager.onAppBackground()
+
+        manager.resumeAfterReconciliation()
+
+        assertEquals(listOf(false), coordinator.starts)
+        assertEquals(1, coordinator.stopCount)
     }
 
     private class FakeCoordinator : PresenceHeartbeatCoordinator {
@@ -38,6 +61,7 @@ class PresenceLifecycleManagerTest {
             MutableStateFlow<PresenceSnapshot?>(null)
         override val desiredState: StateFlow<PresenceState?> =
             MutableStateFlow<PresenceState?>(null)
+        override val terminalFailures: Flow<PresenceHeartbeatFailure> = emptyFlow()
 
         val starts = mutableListOf<Boolean>()
         var stopCount = 0

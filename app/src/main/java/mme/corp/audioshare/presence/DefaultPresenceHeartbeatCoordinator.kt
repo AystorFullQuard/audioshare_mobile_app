@@ -3,11 +3,14 @@ package mme.corp.audioshare.presence
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -40,6 +43,12 @@ class DefaultPresenceHeartbeatCoordinator(
 
     override val desiredState: StateFlow<PresenceState?> =
         mutableDesiredState.asStateFlow()
+
+    private val terminalFailureChannel =
+        Channel<PresenceHeartbeatFailure>(capacity = Channel.BUFFERED)
+
+    override val terminalFailures: Flow<PresenceHeartbeatFailure> =
+        terminalFailureChannel.receiveAsFlow()
 
     private var heartbeatJob: Job? = null
     private var stateUpdateJob: Job? = null
@@ -81,6 +90,7 @@ class DefaultPresenceHeartbeatCoordinator(
                             "Initial heartbeat failed with a terminal error; " +
                                 "heartbeat loop will stop"
                         )
+                        stopAndPublishTerminalFailure(initialResult)
                         return@launch
                     }
                 }
@@ -95,6 +105,7 @@ class DefaultPresenceHeartbeatCoordinator(
                             "Periodic heartbeat failed with a terminal error; " +
                                 "heartbeat loop will stop"
                         )
+                        stopAndPublishTerminalFailure(result)
                         break
                     }
                 }
@@ -156,7 +167,7 @@ class DefaultPresenceHeartbeatCoordinator(
                     "Desired state heartbeat failed with a terminal error; " +
                         "stopping heartbeat runtime"
                 )
-                stop()
+                stopAndPublishTerminalFailure(result)
             }
         }
     }
@@ -167,74 +178,119 @@ class DefaultPresenceHeartbeatCoordinator(
         }
 
     private suspend fun heartbeatWithRetry(): Result<PresenceSnapshot> {
-        var retryIndex = 0
-
-        while (true) {
-            val requestedState = mutableDesiredState.value
-
-            logger.debug(
-                TAG,
-                "Sending heartbeat; desiredState=${requestedState.toLogValue()}, " +
-                    "attempt=${retryIndex + 1}"
-            )
-
-            val result = try {
-                presenceClient.heartbeat(requestedState)
-            } catch (exception: CancellationException) {
-                logger.debug(TAG, "Heartbeat request cancelled")
-                throw exception
-            } catch (exception: Exception) {
-                logger.error(
-                    TAG,
-                    "Heartbeat client threw ${exception.safeTypeName()}",
-                    exception
-                )
-                Result.failure(exception)
-            }
-
-            result.onSuccess { snapshot ->
-                mutableConfirmedPresence.value = snapshot
-
-                logger.debug(
-                    TAG,
-                    "Heartbeat confirmed; state=${snapshot.state.name}, " +
-                        "hasCurrentRoom=${snapshot.currentRoomId != null}"
-                )
-            }
-
+        for ((retryIndex, retryDelayMillis) in retryDelaysMillis.withIndex()) {
+            val result = sendHeartbeatAttempt(attemptNumber = retryIndex + 1)
             val failure = result.exceptionOrNull() ?: return result
 
-            if (!failure.isRetryable() ||
-                retryIndex >= retryDelaysMillis.size
-            ) {
-                if (failure is ApiException &&
-                    failure.apiError.code == PRESENCE_STATE_INVALID
-                ) {
-                    mutableDesiredState.value = null
-
-                    logger.warn(
-                        TAG,
-                        "Server rejected desired presence state; " +
-                            "desired state cleared"
-                    )
-                }
-
-                logTerminalFailure(failure)
+            if (!failure.isRetryable()) {
+                handleTerminalFailure(failure)
                 return result
             }
-
-            val retryDelayMillis = retryDelaysMillis[retryIndex]
 
             logRetryableFailure(
                 failure = failure,
                 retryNumber = retryIndex + 1,
                 retryDelayMillis = retryDelayMillis
             )
-
             delay(retryDelayMillis.milliseconds)
-            retryIndex += 1
+        }
+
+        val finalResult = sendHeartbeatAttempt(
+            attemptNumber = retryDelaysMillis.size + 1
+        )
+        finalResult.exceptionOrNull()?.let { failure ->
+            handleTerminalFailure(failure)
+        }
+        return finalResult
+    }
+
+    private suspend fun sendHeartbeatAttempt(
+        attemptNumber: Int
+    ): Result<PresenceSnapshot> {
+        val requestedState = mutableDesiredState.value
+
+        logger.debug(
+            TAG,
+            "Sending heartbeat; desiredState=${requestedState.toLogValue()}, " +
+                "attempt=$attemptNumber"
+        )
+
+        val result = try {
+            presenceClient.heartbeat(requestedState)
+        } catch (exception: CancellationException) {
+            logger.debug(TAG, "Heartbeat request cancelled")
+            throw exception
+        } catch (exception: Exception) {
+            logger.error(
+                TAG,
+                "Heartbeat client threw ${exception.safeTypeName()}",
+                exception
+            )
+            Result.failure(exception)
+        }
+
+        result.onSuccess { snapshot ->
+            mutableConfirmedPresence.value = snapshot
+            logger.debug(
+                TAG,
+                "Heartbeat confirmed; state=${snapshot.state.name}, " +
+                    "hasCurrentRoom=${snapshot.currentRoomId != null}"
+            )
+        }
+        return result
+    }
+
+    private fun handleTerminalFailure(
+        failure: Throwable
+    ) {
+        if (failure is ApiException &&
+            failure.apiError.code == PRESENCE_STATE_INVALID
+        ) {
+            mutableDesiredState.value = null
+            logger.warn(
+                TAG,
+                "Server rejected desired presence state; desired state cleared"
+            )
+        }
+
+        logTerminalFailure(failure)
+    }
+
+    private fun stopAndPublishTerminalFailure(
+        result: Result<PresenceSnapshot>
+    ) {
+        val failure = result.exceptionOrNull() ?: return
+        // Publish only after runtime-owned jobs are detached. A terminal event
+        // can otherwise race with reconciliation and make a restart observe
+        // the terminating heartbeat job as still active.
+        stop()
+        publishTerminalFailure(failure)
+    }
+
+    private fun publishTerminalFailure(failure: Throwable) {
+        val event = failure.toHeartbeatFailure()
+        val published = terminalFailureChannel.trySend(event).isSuccess
+        if (!published) {
+            logger.warn(
+                TAG,
+                "Terminal heartbeat failure could not be queued; " +
+                    "type=${event.type}, apiCode=${event.apiCode ?: NONE}"
+            )
         }
     }
+
+    private fun Throwable.toHeartbeatFailure(): PresenceHeartbeatFailure =
+        if (this is ApiException) {
+            PresenceHeartbeatFailure(
+                type = "ApiException",
+                httpCode = httpCode,
+                apiCode = apiError.code
+            )
+        } else {
+            PresenceHeartbeatFailure(
+                type = safeTypeName()
+            )
+        }
 
     private fun logRetryableFailure(
         failure: Throwable,
@@ -289,6 +345,7 @@ class DefaultPresenceHeartbeatCoordinator(
     private companion object {
         const val TAG = "PresenceHeartbeat"
         const val KEEP_CURRENT_STATE = "KEEP_CURRENT"
+        const val NONE = "NONE"
         const val DEFAULT_HEARTBEAT_INTERVAL_MILLIS = 30_000L
         const val PRESENCE_STATE_INVALID = "PRESENCE_STATE_INVALID"
 
