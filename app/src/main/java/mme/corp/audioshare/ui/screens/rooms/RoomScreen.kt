@@ -43,6 +43,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.data.dto.presence.PresenceState
 import mme.corp.audioshare.data.dto.room.RoomMemberRole
 import mme.corp.audioshare.data.dto.room.RoomMemberState
@@ -52,6 +55,11 @@ import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.data.model.room.RoomMember
 import mme.corp.audioshare.room.RoomSessionCoordinator
 import mme.corp.audioshare.room.RoomSessionOperation
+
+private val DEFAULT_MEMBER_POLLING_CONFIG = MemberPresencePollingConfig(
+    intervalMillis = BuildConfig.ROOM_MEMBER_POLL_INTERVAL_MILLIS,
+    maxBackoffMillis = BuildConfig.ROOM_MEMBER_POLL_MAX_BACKOFF_MILLIS
+)
 
 object RoomUiTestTags {
     const val LIST = "room_details_list"
@@ -91,7 +99,9 @@ internal fun RoomScreen(
     roomId: String,
     viewModel: RoomsViewModel,
     onNavigateRooms: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    memberPollingConfig: MemberPresencePollingConfig =
+        DEFAULT_MEMBER_POLLING_CONFIG
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -103,22 +113,36 @@ internal fun RoomScreen(
 
     LaunchedEffect(
         roomId,
-        state.session.isBusy,
-        state.runningOperation,
+        state.isInteractionBlocked,
         viewModel
     ) {
-        if (!state.isBusy) {
+        if (!state.isInteractionBlocked) {
             viewModel.onAction(RoomsUiAction.OpenRoomDetails(roomId))
         }
     }
 
-    LaunchedEffect(viewModel, lifecycleOwner) {
+    LaunchedEffect(
+        roomId,
+        viewModel,
+        lifecycleOwner,
+        memberPollingConfig
+    ) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            viewModel.events.collect { event ->
-                when (event) {
-                    is RoomsUiEvent.NavigateToRoom -> Unit
-                    RoomsUiEvent.NavigateToRooms -> onNavigateRooms()
+            launch {
+                viewModel.uiState.first { current -> !current.isInteractionBlocked }
+                viewModel.onAction(RoomsUiAction.RefreshVisibleRoom(roomId))
+                viewModel.uiState.first { current -> !current.isInteractionBlocked }
+                viewModel.startVisibleMemberPolling(roomId, memberPollingConfig)
+            }
+            try {
+                viewModel.events.collect { event ->
+                    when (event) {
+                        is RoomsUiEvent.NavigateToRoom -> Unit
+                        RoomsUiEvent.NavigateToRooms -> onNavigateRooms()
+                    }
                 }
+            } finally {
+                viewModel.stopVisibleMemberPolling()
             }
         }
     }
@@ -166,7 +190,7 @@ fun RoomScreenContent(
     state.confirmation?.let { confirmation ->
         RoomActionConfirmationDialog(
             confirmation = confirmation,
-            enabled = !state.isBusy,
+            enabled = !state.isInteractionBlocked,
             onConfirm = { onAction(RoomsUiAction.ConfirmRoomAction) },
             onDismiss = { onAction(RoomsUiAction.DismissConfirmation) }
         )
@@ -190,8 +214,8 @@ private fun RoomScreenList(
     ) {
         item {
             RoomHeader(
-                backEnabled = !state.isBusy,
-                refreshEnabled = presentation.room != null && !state.isBusy,
+                backEnabled = !state.isInteractionBlocked,
+                refreshEnabled = presentation.room != null && !state.isInteractionBlocked,
                 onBack = onBack,
                 onRefresh = { onAction(RoomsUiAction.RefreshCurrentRoom) }
             )
@@ -224,7 +248,7 @@ private fun RoomScreenList(
                 RoomErrorCard(
                     message = message,
                     retryable = presentation.retryAction != null,
-                    enabled = !state.isBusy,
+                    enabled = !state.isInteractionBlocked,
                     onRetry = {
                         presentation.retryAction?.let(onAction)
                     }
@@ -277,7 +301,7 @@ private fun RoomScreenList(
             item {
                 RoomLifecycleActions(
                     role = activeRoom.currentUserRole,
-                    enabled = !state.isBusy,
+                    enabled = !state.isInteractionBlocked,
                     onAction = onAction
                 )
             }
@@ -314,7 +338,7 @@ private fun RoomsUiState.toRoomScreenPresentation(
             (error.roomId == null || error.roomId == roomId)
     }
     val message = relevantError?.let { sessionErrorMessage }
-    val loading = isBusy || roomDetailsRoomId != roomId
+    val loading = isInteractionBlocked || roomDetailsRoomId != roomId
 
     return RoomScreenPresentation(
         room = activeRoom,
@@ -329,7 +353,7 @@ private fun RoomsUiState.toRoomScreenPresentation(
             ?.toRoomDetailsRetryAction(),
         showLoading = loading,
         showUnavailable = activeRoom == null && !loading && message == null,
-        showEmptyMembers = activeRoom != null && members.isEmpty() && !isBusy
+        showEmptyMembers = activeRoom != null && members.isEmpty() && !isInteractionBlocked
     )
 }
 
@@ -606,10 +630,11 @@ private val ROOM_DETAILS_RETRY_OPERATIONS = setOf(
 )
 
 private fun RoomSessionOperation.toRoomDetailsRetryAction(): RoomsUiAction =
-    if (this == RoomSessionOperation.DEACTIVATE) {
-        RoomsUiAction.DeactivateCurrentRoom
-    } else {
-        RoomsUiAction.RetryRoomDetails
+    when (this) {
+        RoomSessionOperation.DEACTIVATE -> RoomsUiAction.DeactivateCurrentRoom
+        RoomSessionOperation.REFRESH_ROOM,
+        RoomSessionOperation.REFRESH_MEMBERS -> RoomsUiAction.RefreshCurrentRoom
+        else -> RoomsUiAction.RetryRoomDetails
     }
 
 private fun Room.displayName(): String =

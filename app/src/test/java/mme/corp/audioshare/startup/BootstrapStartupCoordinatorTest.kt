@@ -1,7 +1,9 @@
 package mme.corp.audioshare.startup
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import mme.corp.audioshare.data.dto.bootstrap.BootstrapResponse
 import mme.corp.audioshare.data.dto.bootstrap.Platform
@@ -14,6 +16,7 @@ import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.data.repository.DeviceBootstrapper
 import mme.corp.audioshare.data.repository.SessionBootstrapLoader
 import mme.corp.audioshare.presence.PresenceHeartbeatCoordinator
+import mme.corp.audioshare.presence.PresenceHeartbeatFailure
 import mme.corp.audioshare.presence.PresenceRuntimeController
 import mme.corp.audioshare.room.RoomSessionBootstrapRestorer
 import mme.corp.audioshare.room.RoomSessionRuntimeController
@@ -229,6 +232,7 @@ class BootstrapStartupCoordinatorTest {
             MutableStateFlow(null)
         override val desiredState: StateFlow<PresenceState?> =
             MutableStateFlow(null)
+        override val terminalFailures: Flow<PresenceHeartbeatFailure> = emptyFlow()
 
         override fun start(immediate: Boolean) = Unit
         override fun stop() = Unit
@@ -248,6 +252,8 @@ class BootstrapStartupCoordinatorTest {
             activated = true
             events += "runtime-activate"
         }
+
+        override fun resumeAfterReconciliation() = Unit
 
         override fun stop() = Unit
     }

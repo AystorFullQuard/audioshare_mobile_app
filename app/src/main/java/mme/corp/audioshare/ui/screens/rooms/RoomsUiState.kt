@@ -39,6 +39,16 @@ data class RoomsUiState(
     val isBusy: Boolean
         get() = roomExitPending || runningOperation != null || session.isBusy
 
+    val isBackgroundMemberRefreshRunning: Boolean
+        get() = runningOperation == null &&
+            session.activeOperations.isNotEmpty() &&
+            session.activeOperations.all { operation ->
+                operation == RoomSessionOperation.REFRESH_MEMBERS
+            }
+
+    val isInteractionBlocked: Boolean
+        get() = isBusy && !isBackgroundMemberRefreshRunning
+
     val isRoomTransitionRunning: Boolean
         get() = roomExitPending ||
             runningOperation.isRoomTransition() ||
@@ -87,6 +97,7 @@ sealed interface RoomsUiAction {
     data class OpenRoom(val roomId: String) : RoomsUiAction
     data object DeactivateCurrentRoom : RoomsUiAction
     data class OpenRoomDetails(val roomId: String) : RoomsUiAction
+    data class RefreshVisibleRoom(val roomId: String) : RoomsUiAction
     data object RetryRoomDetails : RoomsUiAction
     data object CreateRoom : RoomsUiAction
     data object JoinLocalDiscoveryRoom : RoomsUiAction

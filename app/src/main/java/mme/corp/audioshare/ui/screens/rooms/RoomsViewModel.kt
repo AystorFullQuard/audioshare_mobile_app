@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.dto.room.RoomMemberRole
 import mme.corp.audioshare.data.dto.room.RoomStatus
@@ -21,6 +25,7 @@ import mme.corp.audioshare.exception.DeviceBootstrapRequiredException
 import mme.corp.audioshare.room.RoomSessionCoordinator
 import mme.corp.audioshare.room.RoomSessionError
 import mme.corp.audioshare.room.RoomSessionOperation
+import kotlin.time.Duration.Companion.milliseconds
 import mme.corp.audioshare.room.RoomSessionState
 import java.io.IOException
 
@@ -75,6 +80,9 @@ class RoomsViewModel(
     val events: Flow<RoomsUiEvent> = eventsChannel.receiveAsFlow()
 
     private var actionJob: Job? = null
+    private var memberPollingJob: Job? = null
+    private var memberPollingRoomId: String? = null
+    private var memberPollingConfig: MemberPresencePollingConfig? = null
     private var roomDetailsWasAvailable = false
     private var roomDetailsExitEventSent = false
     private var roomDetailsLoadAttemptedForId: String? = null
@@ -96,6 +104,8 @@ class RoomsViewModel(
             RoomsUiAction.DeactivateCurrentRoom -> deactivateCurrentRoom()
             is RoomsUiAction.OpenRoomDetails ->
                 openRoomDetails(action.roomId, force = false)
+            is RoomsUiAction.RefreshVisibleRoom ->
+                refreshVisibleRoom(action.roomId)
             RoomsUiAction.RetryRoomDetails -> retryRoomDetails()
             RoomsUiAction.CreateRoom -> createRoom()
             RoomsUiAction.JoinLocalDiscoveryRoom -> joinLocalDiscoveryRoom()
@@ -411,9 +421,42 @@ class RoomsViewModel(
         emitEvent(RoomsUiEvent.NavigateToRooms)
     }
 
+    private fun refreshVisibleRoom(rawRoomId: String) {
+        if (isActionBlocked()) return
+
+        val roomId = rawRoomId.normalizedRoomId() ?: return
+        val activeRoom = coordinator.state.value.currentRoom
+        if (activeRoom?.id != roomId || activeRoom.status != RoomStatus.ACTIVE) {
+            return
+        }
+
+        refreshCurrentRoom(
+            expectedRoomId = roomId,
+            showSuccessFeedback = false,
+            onAccepted = {
+                prepareRoomDetailsTarget(roomId)
+                roomDetailsWasAvailable = true
+                roomDetailsLoadAttemptedForId = roomId
+            }
+        )
+    }
+
     private fun refreshCurrentRoom() {
-        val expectedRoomId = currentRoomActionId()
-        launchAction(RoomsUiOperation.REFRESH_ROOM) {
+        refreshCurrentRoom(
+            expectedRoomId = currentRoomActionId(),
+            showSuccessFeedback = true
+        )
+    }
+
+    private fun refreshCurrentRoom(
+        expectedRoomId: String?,
+        showSuccessFeedback: Boolean,
+        onAccepted: () -> Unit = {}
+    ) {
+        launchAction(
+            operation = RoomsUiOperation.REFRESH_ROOM,
+            onAccepted = onAccepted
+        ) {
             val roomState = coordinator.refreshCurrentRoom()
                 .getOrElse { exception ->
                     showFailure(
@@ -447,12 +490,105 @@ class RoomsViewModel(
                     membersState,
                     RoomSessionOperation.REFRESH_MEMBERS,
                     expectedRoomId
-                )
+                ) && showSuccessFeedback
             ) {
                 showFeedback("Room refreshed.")
             }
         }
     }
+
+    internal fun startVisibleMemberPolling(
+        rawRoomId: String,
+        config: MemberPresencePollingConfig
+    ) {
+        val roomId = rawRoomId.normalizedRoomId() ?: return
+        if (!hasActiveRoom(roomId)) return
+        if (memberPollingRoomId == roomId &&
+            memberPollingConfig == config &&
+            memberPollingJob?.isActive == true
+        ) {
+            return
+        }
+
+        memberPollingJob?.cancel()
+        memberPollingRoomId = roomId
+        memberPollingConfig = config
+        startMemberPollingJob(roomId, config)
+    }
+
+    internal fun stopVisibleMemberPolling() {
+        memberPollingRoomId = null
+        memberPollingConfig = null
+        memberPollingJob?.cancel()
+        memberPollingJob = null
+    }
+
+    private fun startMemberPollingJob(
+        roomId: String,
+        config: MemberPresencePollingConfig
+    ) {
+        memberPollingJob = viewModelScope.launch {
+            var nextDelayMillis = config.intervalMillis
+            while (currentCoroutineContext().isActive && hasActiveRoom(roomId)) {
+                delay(nextDelayMillis.milliseconds)
+                val result = pollVisibleMembers(roomId)
+                if (result == MemberPresencePollResult.STOP) return@launch
+                nextDelayMillis = nextMemberPresencePollDelayMillis(
+                    currentDelayMillis = nextDelayMillis,
+                    result = result,
+                    config = config
+                )
+            }
+        }
+    }
+
+    private suspend fun pollVisibleMembers(
+        rawRoomId: String
+    ): MemberPresencePollResult {
+        if (isActionBlocked()) return MemberPresencePollResult.SKIPPED
+
+        val roomId = rawRoomId.normalizedRoomId()
+            ?: return MemberPresencePollResult.STOP
+        if (!hasActiveRoom(roomId)) return MemberPresencePollResult.STOP
+
+        return try {
+            coordinator.refreshActiveMembers().fold(
+                onSuccess = { state ->
+                    if (state.currentRoom?.let { room ->
+                            room.id == roomId && room.status == RoomStatus.ACTIVE
+                        } == true
+                    ) {
+                        MemberPresencePollResult.SUCCESS
+                    } else {
+                        MemberPresencePollResult.STOP
+                    }
+                },
+                onFailure = {
+                    if (!hasActiveRoom(roomId)) {
+                        MemberPresencePollResult.STOP
+                    } else {
+                        val error = coordinator.state.value.lastError
+                            .forOperation(
+                                RoomSessionOperation.REFRESH_MEMBERS,
+                                roomId
+                            )
+                        if (error?.retryable == true) {
+                            MemberPresencePollResult.RETRYABLE_FAILURE
+                        } else {
+                            MemberPresencePollResult.FAILURE
+                        }
+                    }
+                }
+            )
+        } catch (exception: CancellationException) {
+            throw exception
+        }
+    }
+
+    private fun hasActiveRoom(roomId: String): Boolean =
+        coordinator.state.value.currentRoom?.let { room ->
+            room.id == roomId && room.status == RoomStatus.ACTIVE
+        } == true
 
     private fun handleCurrentRoomAvailability(
         state: RoomSessionState,
@@ -505,7 +641,7 @@ class RoomsViewModel(
     }
 
     private fun dismissConfirmation() {
-        if (mutableUiState.value.isBusy) return
+        if (mutableUiState.value.isInteractionBlocked) return
         mutableUiState.update { current -> current.copy(confirmation = null) }
     }
 
@@ -621,6 +757,7 @@ class RoomsViewModel(
         }
 
         actionJob = viewModelScope.launch {
+            val resumeMemberPolling = pauseMemberPollingForAction()
             try {
                 action()
             } catch (exception: CancellationException) {
@@ -628,6 +765,9 @@ class RoomsViewModel(
             } catch (exception: Exception) {
                 showFailure(exception)
             } finally {
+                if (resumeMemberPolling && currentCoroutineContext().isActive) {
+                    resumeMemberPollingIfEligible()
+                }
                 mutableUiState.update { current ->
                     if (current.runningOperation == operation) {
                         current.copy(runningOperation = null)
@@ -640,12 +780,43 @@ class RoomsViewModel(
         }
     }
 
-    private fun isActionBlocked(): Boolean =
-        mutableUiState.value.roomExitPending ||
+    private suspend fun pauseMemberPollingForAction(): Boolean {
+        val pollingJob = memberPollingJob
+        if (pollingJob?.isActive != true) return false
+
+        memberPollingJob = null
+        pollingJob.cancelAndJoin()
+        return true
+    }
+
+    private fun resumeMemberPollingIfEligible() {
+        if (memberPollingJob?.isActive == true) return
+        val roomId = memberPollingRoomId ?: return
+        val config = memberPollingConfig ?: return
+        if (!hasActiveRoom(roomId)) return
+
+        startMemberPollingJob(roomId, config)
+    }
+
+    private fun isActionBlocked(): Boolean {
+        val activeOperations = coordinator.state.value.activeOperations
+        val onlyBackgroundMemberPolling = memberPollingJob?.isActive == true &&
+            activeOperations.isNotEmpty() &&
+            activeOperations.all { operation ->
+                operation == RoomSessionOperation.REFRESH_MEMBERS
+            }
+
+        return mutableUiState.value.roomExitPending ||
             actionJob?.isActive == true ||
-            coordinator.state.value.isBusy
+            (activeOperations.isNotEmpty() && !onlyBackgroundMemberPolling)
+    }
 
     private fun applySessionState(session: RoomSessionState) {
+        val pollingRoomId = memberPollingRoomId
+        if (pollingRoomId != null && session.currentRoom?.id != pollingRoomId) {
+            stopVisibleMemberPolling()
+        }
+
         val expectedRoomId = mutableUiState.value.roomDetailsRoomId
         val roomMatches = expectedRoomId != null &&
             session.currentRoom?.let { room ->

@@ -4,8 +4,10 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mme.corp.audioshare.data.dto.bootstrap.RoomSummaryResponse
@@ -24,6 +26,7 @@ import mme.corp.audioshare.exception.ApiErrorResponse
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.logging.AppLogger
 import mme.corp.audioshare.presence.PresenceHeartbeatCoordinator
+import mme.corp.audioshare.presence.PresenceHeartbeatFailure
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -1063,6 +1066,23 @@ class DefaultRoomSessionCoordinatorTest {
         assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
     }
 
+
+    @Test
+    fun reconnectClearsCurrentRoomWhenMembershipIsNoLongerActive() = runTest {
+        val roomClient = FakeRoomClient()
+        val presence = FakePresenceCoordinator()
+        val coordinator = DefaultRoomSessionCoordinator(roomClient, presence)
+        coordinator.restoreFromBootstrap(sessionBootstrap("room-1")).getOrThrow()
+        roomClient.roomsResult = Result.success(listOf(room("room-2")))
+
+        val result = coordinator.reconnect()
+
+        assertTrue(result.isSuccess)
+        assertNull(coordinator.state.value.currentRoom)
+        assertEquals(listOf("room-2"), coordinator.state.value.rooms.map { it.id })
+        assertEquals(PresenceState.ONLINE, presence.desiredStates.last())
+    }
+
     @Test
     fun refreshLoggingCapturesRoomAndMemberSnapshotSuccess() = runTest {
         val logger = RecordingAppLogger()
@@ -1242,6 +1262,7 @@ class DefaultRoomSessionCoordinatorTest {
             MutableStateFlow(null)
         override val desiredState: StateFlow<PresenceState?> =
             MutableStateFlow(null)
+        override val terminalFailures: Flow<PresenceHeartbeatFailure> = emptyFlow()
         val desiredStates = mutableListOf<PresenceState?>()
         var onDesiredState: (PresenceState?) -> Unit = {}
 

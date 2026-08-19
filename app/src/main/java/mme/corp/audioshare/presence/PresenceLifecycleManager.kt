@@ -10,8 +10,12 @@ class PresenceLifecycleManager(
     private var runtimeEnabled = false
     private var appInForeground = false
 
+    /**
+     * Marks the process as foreground. Returns true only when startup already
+     * activated the Presence runtime and foreground reconciliation may run.
+     */
     @Synchronized
-    fun onAppForeground() {
+    fun onAppForeground(): Boolean {
         appInForeground = true
 
         logger.info(
@@ -22,15 +26,16 @@ class PresenceLifecycleManager(
         if (runtimeEnabled) {
             logger.debug(
                 TAG,
-                "Resuming heartbeat with an immediate presence update"
+                "Presence runtime awaits foreground reconciliation"
             )
-            heartbeatCoordinator.start(immediate = true)
         } else {
             logger.debug(
                 TAG,
-                "Heartbeat not started: presence runtime is not activated yet"
+                "Foreground reconciliation deferred: presence runtime is not activated yet"
             )
         }
+
+        return runtimeEnabled
     }
 
     @Synchronized
@@ -62,6 +67,24 @@ class PresenceLifecycleManager(
             )
             heartbeatCoordinator.start(immediate = false)
         }
+    }
+
+    @Synchronized
+    override fun resumeAfterReconciliation() {
+        if (!runtimeEnabled || !appInForeground) {
+            logger.debug(
+                TAG,
+                "Heartbeat resume skipped; runtimeEnabled=$runtimeEnabled, " +
+                    "appInForeground=$appInForeground"
+            )
+            return
+        }
+
+        logger.debug(
+            TAG,
+            "Foreground reconciliation completed; resuming periodic heartbeat"
+        )
+        heartbeatCoordinator.start(immediate = false)
     }
 
     @Synchronized

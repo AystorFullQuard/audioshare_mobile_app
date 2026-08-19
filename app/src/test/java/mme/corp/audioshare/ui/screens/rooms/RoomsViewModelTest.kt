@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -38,6 +39,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomsViewModelTest {
@@ -489,6 +491,286 @@ class RoomsViewModelTest {
 
         assertEquals(listOf("room", "members"), coordinator.refreshOrder)
         assertEquals("Room refreshed.", viewModel.uiState.value.feedback?.message)
+    }
+
+    @Test
+    fun visibleRoomRefreshLoadsDetailsThenMembersWithoutSuccessFeedback() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+
+            viewModel.onAction(RoomsUiAction.RefreshVisibleRoom("  room-1  "))
+            advanceUntilIdle()
+
+            assertEquals(listOf("room", "members"), coordinator.refreshOrder)
+            assertEquals(0, coordinator.openCalls)
+            assertEquals("room-1", viewModel.uiState.value.roomDetailsRoomId)
+            assertNull(viewModel.uiState.value.feedback)
+        }
+
+    @Test
+    fun visibleRoomRefreshIgnoresDifferentActiveRoom() = runTest(dispatcher) {
+        val current = room("room-1")
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current, room("room-2")),
+                currentRoom = current
+            )
+        )
+        val viewModel = RoomsViewModel(coordinator)
+
+        viewModel.onAction(RoomsUiAction.RefreshVisibleRoom("room-2"))
+        advanceUntilIdle()
+
+        assertTrue(coordinator.refreshOrder.isEmpty())
+        assertNull(viewModel.uiState.value.roomDetailsRoomId)
+        assertEquals("room-1", viewModel.uiState.value.currentRoom?.id)
+    }
+
+    @Test
+    fun visibleRoomRefreshFailureKeepsRoomAndDoesNotNavigate() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            ).apply {
+                refreshRoomResult = Result.failure(IOException("offline"))
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+
+            viewModel.onAction(RoomsUiAction.RefreshVisibleRoom("room-1"))
+            advanceUntilIdle()
+
+            assertEquals(listOf("room"), coordinator.refreshOrder)
+            assertEquals("room-1", viewModel.uiState.value.currentRoom?.id)
+            assertTrue(observedEvents.isEmpty())
+            assertTrue(viewModel.uiState.value.feedback?.isError == true)
+            collector.cancel()
+        }
+
+    @Test
+    fun memberPollingRefreshesOnlyMembersWithoutOpenOrJoin() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+            val config = MemberPresencePollingConfig(
+                intervalMillis = 100L,
+                maxBackoffMillis = 800L
+            )
+
+            viewModel.startVisibleMemberPolling("  room-1  ", config)
+            advanceTimeBy(100.milliseconds)
+            runCurrent()
+
+            assertEquals(listOf("members"), coordinator.refreshOrder)
+            assertEquals(0, coordinator.openCalls)
+            assertEquals(0, coordinator.joinCalls)
+            viewModel.stopVisibleMemberPolling()
+        }
+
+    @Test
+    fun retryableMemberPollKeepsRoomAndUsesBackoffWithoutNavigation() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val retryableError = RoomSessionError(
+                operation = RoomSessionOperation.REFRESH_MEMBERS,
+                roomId = current.id,
+                type = IOException::class.java.simpleName,
+                retryable = true
+            )
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current,
+                    lastError = retryableError
+                )
+            ).apply {
+                refreshMembersResult = Result.failure(IOException("offline"))
+            }
+            val viewModel = RoomsViewModel(coordinator)
+            val observedEvents = mutableListOf<RoomsUiEvent>()
+            val collector = backgroundScope.launch(
+                UnconfinedTestDispatcher(testScheduler)
+            ) {
+                viewModel.events.collect { observedEvents += it }
+            }
+            val config = MemberPresencePollingConfig(
+                intervalMillis = 100L,
+                maxBackoffMillis = 800L
+            )
+
+            viewModel.startVisibleMemberPolling(current.id, config)
+            advanceTimeBy(100.milliseconds)
+            runCurrent()
+            assertEquals(1, coordinator.refreshMembersCalls)
+
+            advanceTimeBy(100.milliseconds)
+            runCurrent()
+            assertEquals(1, coordinator.refreshMembersCalls)
+
+            advanceTimeBy(100.milliseconds)
+            runCurrent()
+            assertEquals(2, coordinator.refreshMembersCalls)
+            assertEquals(current.id, viewModel.uiState.value.currentRoom?.id)
+            assertTrue(observedEvents.isEmpty())
+
+            viewModel.stopVisibleMemberPolling()
+            collector.cancel()
+        }
+
+    @Test
+    fun memberPollingDoesNotStartWhenRequestedRoomIsNoLongerActive() =
+        runTest(dispatcher) {
+            val current = room("room-1")
+            val coordinator = FakeRoomSessionCoordinator(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = current
+                )
+            )
+            val viewModel = RoomsViewModel(coordinator)
+            coordinator.emit(
+                RoomSessionState(
+                    rooms = listOf(current),
+                    currentRoom = null
+                )
+            )
+            advanceUntilIdle()
+
+            viewModel.startVisibleMemberPolling(
+                current.id,
+                MemberPresencePollingConfig(
+                    intervalMillis = 100L,
+                    maxBackoffMillis = 800L
+                )
+            )
+            advanceTimeBy(100.milliseconds)
+            runCurrent()
+
+            assertTrue(coordinator.refreshOrder.isEmpty())
+        }
+
+    @Test
+    fun manualRefreshResetsMemberPollingDelay() = runTest(dispatcher) {
+        val current = room("room-1")
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        )
+        val viewModel = RoomsViewModel(coordinator)
+        val config = MemberPresencePollingConfig(
+            intervalMillis = 1_000L,
+            maxBackoffMillis = 8_000L
+        )
+
+        viewModel.startVisibleMemberPolling(current.id, config)
+        runCurrent()
+        advanceTimeBy(500.milliseconds)
+        runCurrent()
+        assertTrue(coordinator.refreshOrder.isEmpty())
+
+        viewModel.onAction(RoomsUiAction.RefreshCurrentRoom)
+        runCurrent()
+        assertEquals(listOf("room", "members"), coordinator.refreshOrder)
+        coordinator.refreshOrder.clear()
+
+        advanceTimeBy(999.milliseconds)
+        runCurrent()
+        assertTrue(coordinator.refreshOrder.isEmpty())
+
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+        assertEquals(listOf("members"), coordinator.refreshOrder)
+        viewModel.stopVisibleMemberPolling()
+    }
+
+    @Test
+    fun lifecycleActionPreemptsInFlightMemberPoll() = runTest(dispatcher) {
+        val current = room("room-1")
+        val gate = CompletableDeferred<Unit>()
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        ).apply {
+            refreshMembersGate = gate
+        }
+        val viewModel = RoomsViewModel(coordinator)
+        val config = MemberPresencePollingConfig(
+            intervalMillis = 100L,
+            maxBackoffMillis = 800L
+        )
+
+        viewModel.startVisibleMemberPolling(current.id, config)
+        advanceTimeBy(100.milliseconds)
+        runCurrent()
+        assertTrue(coordinator.refreshMembersCancelled.not())
+        assertEquals(
+            setOf(RoomSessionOperation.REFRESH_MEMBERS),
+            coordinator.state.value.activeOperations
+        )
+
+        viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
+        advanceUntilIdle()
+
+        assertTrue(coordinator.refreshMembersCancelled)
+        assertEquals(1, coordinator.deactivateCalls)
+        assertNull(viewModel.uiState.value.currentRoom)
+    }
+
+    @Test
+    fun stoppingMemberPollingCancelsInFlightRefresh() = runTest(dispatcher) {
+        val current = room("room-1")
+        val gate = CompletableDeferred<Unit>()
+        val coordinator = FakeRoomSessionCoordinator(
+            RoomSessionState(
+                rooms = listOf(current),
+                currentRoom = current
+            )
+        ).apply {
+            refreshMembersGate = gate
+        }
+        val viewModel = RoomsViewModel(coordinator)
+
+        viewModel.startVisibleMemberPolling(
+            current.id,
+            MemberPresencePollingConfig(
+                intervalMillis = 100L,
+                maxBackoffMillis = 800L
+            )
+        )
+        advanceTimeBy(100.milliseconds)
+        runCurrent()
+        assertEquals(1, coordinator.refreshMembersCalls)
+
+        viewModel.stopVisibleMemberPolling()
+        runCurrent()
+
+        assertTrue(coordinator.refreshMembersCancelled)
     }
 
     @Test
@@ -1624,6 +1906,7 @@ class RoomsViewModelTest {
         var deactivateCalls = 0
         var leaveCalls = 0
         var archiveCalls = 0
+        var refreshMembersCalls = 0
         val refreshOrder = mutableListOf<String>()
 
         var loadRoomsGate: CompletableDeferred<Unit>? = null
@@ -1632,6 +1915,8 @@ class RoomsViewModelTest {
         var joinRoomGate: CompletableDeferred<Unit>? = null
         var deactivateRoomGate: CompletableDeferred<Unit>? = null
         var refreshRoomGate: CompletableDeferred<Unit>? = null
+        var refreshMembersGate: CompletableDeferred<Unit>? = null
+        var refreshMembersCancelled = false
         var leaveRoomGate: CompletableDeferred<Unit>? = null
         var archiveRoomGate: CompletableDeferred<Unit>? = null
         var openCancelled = false
@@ -1747,7 +2032,28 @@ class RoomsViewModelTest {
         }
 
         override suspend fun refreshActiveMembers(): Result<RoomSessionState> {
+            refreshMembersCalls += 1
             refreshOrder += "members"
+            val gate = refreshMembersGate
+            if (gate != null) {
+                emit(
+                    mutableState.value.copy(
+                        activeOperations = setOf(
+                            RoomSessionOperation.REFRESH_MEMBERS
+                        )
+                    )
+                )
+                try {
+                    gate.await()
+                } catch (exception: CancellationException) {
+                    refreshMembersCancelled = true
+                    throw exception
+                } finally {
+                    emit(
+                        mutableState.value.copy(activeOperations = emptySet())
+                    )
+                }
+            }
             val result = refreshMembersResult ?: Result.success(mutableState.value)
             result.onSuccess(::emit)
             return result

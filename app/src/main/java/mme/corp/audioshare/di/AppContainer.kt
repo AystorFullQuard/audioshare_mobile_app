@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.api.PresenceApi
@@ -21,6 +22,7 @@ import mme.corp.audioshare.presence.AppPresenceLifecycleObserver
 import mme.corp.audioshare.presence.DefaultPresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceLifecycleManager
 import mme.corp.audioshare.room.DefaultRoomSessionCoordinator
+import mme.corp.audioshare.runtime.SessionRuntimeReconciler
 import mme.corp.audioshare.startup.BootstrapStartupCoordinator
 
 class AppContainer(
@@ -72,6 +74,7 @@ class AppContainer(
         DefaultPresenceHeartbeatCoordinator(
             presenceClient = presenceRepository,
             scope = applicationScope,
+            heartbeatIntervalMillis = BuildConfig.PRESENCE_HEARTBEAT_INTERVAL_MILLIS,
             logger = appLogger
         )
 
@@ -88,9 +91,19 @@ class AppContainer(
             logger = appLogger
         )
 
+    val sessionRuntimeReconciler =
+        SessionRuntimeReconciler(
+            roomSessionCoordinator = roomSessionCoordinator,
+            heartbeatCoordinator = presenceHeartbeatCoordinator,
+            presenceRuntimeController = presenceLifecycleManager,
+            scope = applicationScope,
+            logger = appLogger
+        )
+
     val presenceLifecycleObserver =
         AppPresenceLifecycleObserver(
-            lifecycleManager = presenceLifecycleManager
+            lifecycleManager = presenceLifecycleManager,
+            sessionRuntimeReconciler = sessionRuntimeReconciler
         )
 
     val bootstrapStartupCoordinator =
