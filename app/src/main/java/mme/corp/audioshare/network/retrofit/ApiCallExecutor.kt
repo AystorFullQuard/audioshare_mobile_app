@@ -27,6 +27,33 @@ internal suspend fun executeApiCallWithoutBody(
     Result.success(Unit)
 }
 
+internal fun <T : Any> executeBlockingApiCall(
+    emptyBodyMessage: String,
+    httpFailureOverride: (Response<T>) -> Throwable? = { null },
+    call: () -> Response<T>
+): Result<T> = try {
+    val response = call()
+
+    if (response.isSuccessful) {
+        val body = response.body()
+
+        if (body != null) {
+            Result.success(body)
+        } else {
+            Result.failure(IllegalStateException(emptyBodyMessage))
+        }
+    } else {
+        Result.failure(
+            httpFailureOverride(response)
+                ?: response.toApiException()
+        )
+    }
+} catch (exception: CancellationException) {
+    throw exception
+} catch (exception: Exception) {
+    Result.failure(exception)
+}
+
 private suspend fun <T, R> executeApiResponse(
     call: suspend () -> Response<T>,
     onSuccess: (Response<T>) -> Result<R>

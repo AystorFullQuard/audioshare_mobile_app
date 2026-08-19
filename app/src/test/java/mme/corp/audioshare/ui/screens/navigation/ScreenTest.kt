@@ -19,6 +19,28 @@ class ScreenTest {
     }
 
     @Test
+    fun bootstrapRestartsAtSplashOnlyWhenAuthenticationIsLost() {
+        assertTrue(
+            shouldRestartBootstrapAtSplash(
+                Screen.Bootstrap.route,
+                hasAccessToken = false
+            )
+        )
+        assertFalse(
+            shouldRestartBootstrapAtSplash(
+                Screen.Bootstrap.route,
+                hasAccessToken = true
+            )
+        )
+        assertFalse(
+            shouldRestartBootstrapAtSplash(
+                Screen.Login.route,
+                hasAccessToken = false
+            )
+        )
+    }
+
+    @Test
     fun protectedRoutesRestartAtSplashUntilRuntimeIsInitialized() {
         assertTrue(shouldRestartAtSplash(Screen.Home.route, runtimeReady = false))
         assertTrue(shouldRestartAtSplash(Screen.Rooms.route, runtimeReady = false))

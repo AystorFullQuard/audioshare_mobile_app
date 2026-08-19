@@ -23,6 +23,7 @@ import mme.corp.audioshare.presence.DefaultPresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceLifecycleManager
 import mme.corp.audioshare.room.DefaultRoomSessionCoordinator
 import mme.corp.audioshare.runtime.SessionRuntimeReconciler
+import mme.corp.audioshare.runtime.guardAuthenticatedRuntime
 import mme.corp.audioshare.startup.BootstrapStartupCoordinator
 
 class AppContainer(
@@ -123,4 +124,12 @@ class AppContainer(
         presenceRuntimeController = presenceLifecycleManager,
         roomSessionRuntimeController = roomSessionCoordinator
     )
+
+    init {
+        applicationScope.guardAuthenticatedRuntime(
+            accessTokens = sessionManager.accessToken,
+            presenceRuntimeController = presenceLifecycleManager,
+            roomSessionRuntimeController = roomSessionCoordinator
+        )
+    }
 }
