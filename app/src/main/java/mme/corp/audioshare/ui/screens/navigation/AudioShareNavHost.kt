@@ -33,15 +33,20 @@ fun AudioShareNavHost(
         .presenceHeartbeatCoordinator
         .confirmedPresence
         .collectAsStateWithLifecycle()
-    val runtimeReady = !accessToken.isNullOrBlank() && confirmedPresence != null
+    val hasAccessToken = !accessToken.isNullOrBlank()
+    val runtimeReady = hasAccessToken && confirmedPresence != null
     val backStackEntry = navController.currentBackStackEntryAsState()
     val route = backStackEntry.value?.destination?.route
 
-    LaunchedEffect(route, runtimeReady) {
+    LaunchedEffect(route, hasAccessToken, runtimeReady) {
         Log.d(TAG, "Current Route = $route")
 
-        if (shouldRestartAtSplash(route, runtimeReady)) {
-            navController.restartAtSplash()
+        when {
+            shouldRestartBootstrapAtSplash(route, hasAccessToken) ->
+                navController.restartBootstrapAtSplash()
+
+            shouldRestartAtSplash(route, runtimeReady) ->
+                navController.restartProtectedRuntimeAtSplash()
         }
     }
 
@@ -119,9 +124,22 @@ internal fun shouldRestartAtSplash(
     else -> false
 }
 
-private fun NavHostController.restartAtSplash() {
+internal fun shouldRestartBootstrapAtSplash(
+    route: String?,
+    hasAccessToken: Boolean
+): Boolean =
+    route == Screen.Bootstrap.route && !hasAccessToken
+
+private fun NavHostController.restartProtectedRuntimeAtSplash() {
     navigate(Screen.Splash.route) {
         popUpTo(Screen.Home.route) { inclusive = true }
+        launchSingleTop = true
+    }
+}
+
+private fun NavHostController.restartBootstrapAtSplash() {
+    navigate(Screen.Splash.route) {
+        popUpTo(Screen.Bootstrap.route) { inclusive = true }
         launchSingleTop = true
     }
 }

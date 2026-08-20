@@ -2,8 +2,8 @@ package mme.corp.audioshare.network.retrofit
 
 import android.util.Log
 import mme.corp.audioshare.BuildConfig
+import mme.corp.audioshare.data.storage.TokenStore
 import mme.corp.audioshare.network.interceptor.AuthInterceptor
-import mme.corp.audioshare.data.storage.SessionManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -15,7 +15,7 @@ object ApiClient {
     private const val TAG = "ApiClient"
     private var retrofit: Retrofit? = null
 
-    fun initialize(sessionManager: SessionManager) {
+    fun initialize(tokenStore: TokenStore) {
         Log.d(TAG, "Initializing Retrofit")
         val logging = HttpLoggingInterceptor().apply {
             level =
@@ -25,19 +25,28 @@ object ApiClient {
                     HttpLoggingInterceptor.Level.NONE
         }
 
-        val client = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(sessionManager))
-            .addInterceptor(logging)
+        val sharedClient = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
-        retrofit = Retrofit.Builder()
-            .baseUrl(NetworkConfig.BASE_URL)
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
+        val refreshClient = createTokenRefreshClient(
+            buildRetrofit(sharedClient)
+        )
+
+        val authenticatedClient = sharedClient.newBuilder()
+            .addInterceptor(AuthInterceptor(tokenStore))
+            .authenticator(
+                TokenAuthenticator(
+                    tokenStore = tokenStore,
+                    refreshClient = refreshClient
+                )
+            )
+            .addInterceptor(logging)
             .build()
+
+        retrofit = buildRetrofit(authenticatedClient)
     }
 
     fun <T> create(service: Class<T>): T {
@@ -46,4 +55,11 @@ object ApiClient {
 
         return instance.create(service)
     }
+
+    private fun buildRetrofit(client: OkHttpClient): Retrofit =
+        Retrofit.Builder()
+            .baseUrl(NetworkConfig.BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
 }

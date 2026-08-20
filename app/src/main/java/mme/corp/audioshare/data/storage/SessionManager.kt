@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -17,7 +18,7 @@ private val Context.dataStore by preferencesDataStore(name = "session")
 
 class SessionManager(
     private val context: Context
-) : AccessTokenProvider, DeviceIdStore {
+) : DeviceIdStore, TokenStore {
 
     companion object {
 
@@ -293,6 +294,32 @@ class SessionManager(
         }
     }
 
+    override suspend fun getTokenSnapshot(): TokenSnapshot? {
+        Log.d(TAG, "getTokenSnapshot()")
+
+        return try {
+            val preferences = context.dataStore.data.first()
+            val accessToken = preferences[ACCESS_TOKEN]
+            val refreshToken = preferences[REFRESH_TOKEN]
+
+            if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank()) {
+                Log.d(TAG, "Token snapshot unavailable")
+                null
+            } else {
+                Log.d(TAG, "Token snapshot available")
+                TokenSnapshot(
+                    accessToken = accessToken,
+                    refreshToken = refreshToken
+                )
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Log.e(TAG, "getTokenSnapshot() FAILED", exception)
+            null
+        }
+    }
+
     suspend fun getRefreshToken(): String? {
         Log.d(TAG, "getRefreshToken()")
 
@@ -313,10 +340,12 @@ class SessionManager(
         }
     }
 
-    suspend fun updateTokens(
+    override suspend fun updateTokens(
         accessToken: String,
         refreshToken: String
     ) {
+        require(accessToken.isNotBlank()) { "Access token must not be blank" }
+        require(refreshToken.isNotBlank()) { "Refresh token must not be blank" }
 
         Log.d(TAG, "==========================================")
         Log.d(TAG, "updateTokens() START")
@@ -341,6 +370,39 @@ class SessionManager(
         } finally {
 
             Log.d(TAG, "updateTokens() END")
+            Log.d(TAG, "==========================================")
+        }
+    }
+
+    override suspend fun clearSessionIfMatches(
+        expected: TokenSnapshot
+    ): Boolean {
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "clearSessionIfMatches() START")
+
+        var cleared = false
+
+        try {
+            context.dataStore.edit { preferences ->
+                val currentAccessToken = preferences[ACCESS_TOKEN]
+                val currentRefreshToken = preferences[REFRESH_TOKEN]
+
+                if (
+                    currentAccessToken == expected.accessToken &&
+                    currentRefreshToken == expected.refreshToken
+                ) {
+                    preferences.clear()
+                    cleared = true
+                }
+            }
+
+            Log.i(TAG, "Session cleared after refresh rejection=$cleared")
+            return cleared
+        } catch (e: Exception) {
+            Log.e(TAG, "clearSessionIfMatches() FAILED", e)
+            throw e
+        } finally {
+            Log.d(TAG, "clearSessionIfMatches() END")
             Log.d(TAG, "==========================================")
         }
     }
