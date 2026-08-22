@@ -2,7 +2,7 @@ package mme.corp.audioshare.network.retrofit
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
-import mme.corp.audioshare.data.dto.RefreshResponse
+import mme.corp.audioshare.data.dto.LoginResponse
 import mme.corp.audioshare.data.storage.TokenSnapshot
 import mme.corp.audioshare.data.storage.TokenStore
 import mme.corp.audioshare.exception.ApiErrorResponse
@@ -334,8 +334,8 @@ class TokenAuthenticatorTest {
             refreshToken = NEW_REFRESH_TOKEN
         )
 
-    private fun refreshResponse(): RefreshResponse =
-        RefreshResponse(
+    private fun refreshResponse(): LoginResponse =
+        LoginResponse(
             userId = "user-id",
             sessionId = "session-id",
             tokenType = "Bearer",

@@ -11,7 +11,6 @@ import mme.corp.audioshare.exception.ApiErrorResponse
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.presence.PresenceRuntimeController
 import mme.corp.audioshare.room.RoomSessionRuntimeController
-import mme.corp.audioshare.session.JwtSessionDecoder
 
 class AuthRepository(
     private val authApi: AuthApi,
@@ -127,19 +126,19 @@ class AuthRepository(
             }
 
             Log.i(TAG, "Login successful")
-            Log.d(TAG, "UserId       : ${body.user.id}")
-            Log.d(TAG, "SessionId    : ${JwtSessionDecoder.sessionId(body.session.accessToken)}")
-            Log.d(TAG, "TokenType    : ${JwtSessionDecoder.tokenType(body.session.accessToken)}")
-            Log.d(TAG, "AccessToken  : ${body.session.accessToken.take(20)}...")
-            Log.d(TAG, "RefreshToken : ${body.session.refreshToken.take(20)}...")
+            Log.d(TAG, "UserId       : ${body.userId}")
+            Log.d(TAG, "SessionId    : ${body.sessionId}")
+            Log.d(TAG, "TokenType    : ${body.tokenType}")
+            Log.d(TAG, "AccessToken  : ${body.accessToken.take(20)}...")
+            Log.d(TAG, "RefreshToken : ${body.refreshToken.take(20)}...")
 
             Log.d(TAG, "Saving session")
 
             sessionManager.saveSession(
-                accessToken = body.session.accessToken,
-                refreshToken = body.session.refreshToken,
-                userId = body.user.id,
-                sessionId = JwtSessionDecoder.sessionId(body.session.accessToken)
+                accessToken = body.accessToken,
+                refreshToken = body.refreshToken,
+                userId = body.userId,
+                sessionId = body.sessionId
             )
 
             Log.d(TAG, "Session saved successfully")
@@ -259,42 +258,27 @@ class AuthRepository(
             Log.d(TAG, "Updating stored tokens")
 
             sessionManager.saveSession(
-                accessToken = body.session.accessToken,
-                refreshToken = body.session.refreshToken,
-                userId = body.user.id,
-                sessionId = JwtSessionDecoder.sessionId(body.session.accessToken)
+                accessToken = body.accessToken,
+                refreshToken = body.refreshToken,
+                userId = body.userId,
+                sessionId = body.sessionId
             )
 
             Log.i(TAG, "Refresh successful")
 
-            Log.d(TAG, "UserId       : ${body.user.id}")
+            Log.d(TAG, "UserId       : ${body.userId}")
+
+            Log.d(TAG, "SessionId    : ${body.sessionId}")
+            Log.d(TAG, "TokenType    : ${body.tokenType}")
 
             Log.d(
                 TAG,
-                "SessionId    : ${
-                    JwtSessionDecoder.sessionId(
-                        body.session.accessToken
-                    )
-                }"
+                "AccessToken  : ${body.accessToken.take(20)}..."
             )
 
             Log.d(
                 TAG,
-                "TokenType    : ${
-                    JwtSessionDecoder.tokenType(
-                        body.session.accessToken
-                    )
-                }"
-            )
-
-            Log.d(
-                TAG,
-                "AccessToken  : ${body.session.accessToken.take(20)}..."
-            )
-
-            Log.d(
-                TAG,
-                "RefreshToken : ${body.session.refreshToken.take(20)}..."
+                "RefreshToken : ${body.refreshToken.take(20)}..."
             )
 
             Result.success(body)

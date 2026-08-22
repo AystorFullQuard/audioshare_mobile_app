@@ -1,14 +1,14 @@
 package mme.corp.audioshare.network.retrofit
 
 import mme.corp.audioshare.data.dto.RefreshRequest
-import mme.corp.audioshare.data.dto.RefreshResponse
+import mme.corp.audioshare.data.dto.LoginResponse
 import retrofit2.Call
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.POST
 
 fun interface TokenRefreshClient {
-    fun refresh(refreshToken: String): Result<RefreshResponse>
+    fun refresh(refreshToken: String): Result<LoginResponse>
 }
 
 internal class RefreshSessionRejectedException :
@@ -24,14 +24,14 @@ internal fun interface TokenRefreshApi {
     @POST("/api/v1/auth/refresh")
     fun refresh(
         @Body request: RefreshRequest
-    ): Call<RefreshResponse>
+    ): Call<LoginResponse>
 }
 
 internal class DefaultTokenRefreshClient(
     private val refreshApi: TokenRefreshApi
 ) : TokenRefreshClient {
 
-    override fun refresh(refreshToken: String): Result<RefreshResponse> {
+    override fun refresh(refreshToken: String): Result<LoginResponse> {
         if (refreshToken.isBlank()) {
             return Result.failure(
                 IllegalArgumentException("Refresh token must not be blank")
