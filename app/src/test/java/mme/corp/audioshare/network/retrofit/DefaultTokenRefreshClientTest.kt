@@ -116,11 +116,24 @@ class DefaultTokenRefreshClientTest {
             .setBody(
                 """
                 {
-                  "userId": "user-id",
-                  "sessionId": "session-id",
-                  "tokenType": "Bearer",
-                  "accessToken": "$accessToken",
-                  "refreshToken": "$refreshToken"
+                  "session": {
+                    "accessToken": "$accessToken",
+                    "refreshToken": "$refreshToken",
+                    "accessTokenExpiresAt": "2026-08-23T12:00:00Z",
+                    "refreshTokenExpiresAt": "2026-09-23T12:00:00Z",
+                    "complete": true
+                  },
+                  "user": {
+                    "id": "user-id",
+                    "email": "user@example.test",
+                    "phone": null,
+                    "username": "user",
+                    "displayName": "User",
+                    "avatarURL": null,
+                    "emailVerified": true,
+                    "phoneVerified": false,
+                    "settings": null
+                  }
                 }
                 """.trimIndent()
             )

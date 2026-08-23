@@ -1,14 +1,10 @@
 package mme.corp.audioshare.data.dto
 
 /**
- * Authentication response contract shared by login and refresh endpoints.
- *
- * Matches ServeRelay's current flat LoginResponse payload.
+ * Authentication response shared by login and refresh endpoints.
+ * Mirrors ServeRelay's nested { session, user } contract.
  */
 data class LoginResponse(
-    val userId: String,
-    val sessionId: String,
-    val tokenType: String,
-    val accessToken: String,
-    val refreshToken: String
+    val session: SessionDto,
+    val user: UserDto
 )

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.exception.ApiException
+import mme.corp.audioshare.session.JwtSessionDecoder
 
 class LoginViewModel(
     private val authRepository: AuthRepository
@@ -152,9 +153,9 @@ class LoginViewModel(
                 result.onSuccess { response ->
 
                     Log.i(TAG, "LOGIN SUCCESS")
-                    Log.d(TAG, "UserId = ${response.userId}")
-                    Log.d(TAG, "SessionId = ${response.sessionId}")
-                    Log.d(TAG, "Token type = ${response.tokenType}")
+                    Log.d(TAG, "UserId = ${response.user.id}")
+                    Log.d(TAG, "SessionId = ${JwtSessionDecoder.sessionId(response.session.accessToken)}")
+                    Log.d(TAG, "Token type = ${JwtSessionDecoder.tokenType(response.session.accessToken)}")
 
                     Log.d(TAG, "Updating UI state")
 

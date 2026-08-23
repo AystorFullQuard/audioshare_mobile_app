@@ -1,14 +1,19 @@
 package mme.corp.audioshare.network.retrofit
 
-import mme.corp.audioshare.data.dto.RefreshRequest
 import mme.corp.audioshare.data.dto.LoginResponse
+import mme.corp.audioshare.data.dto.RefreshRequest
 import retrofit2.Call
 import retrofit2.Retrofit
 import retrofit2.http.Body
 import retrofit2.http.POST
 
+data class RefreshedTokens(
+    val accessToken: String,
+    val refreshToken: String
+)
+
 fun interface TokenRefreshClient {
-    fun refresh(refreshToken: String): Result<LoginResponse>
+    fun refresh(refreshToken: String): Result<RefreshedTokens>
 }
 
 internal class RefreshSessionRejectedException :
@@ -31,7 +36,7 @@ internal class DefaultTokenRefreshClient(
     private val refreshApi: TokenRefreshApi
 ) : TokenRefreshClient {
 
-    override fun refresh(refreshToken: String): Result<LoginResponse> {
+    override fun refresh(refreshToken: String): Result<RefreshedTokens> {
         if (refreshToken.isBlank()) {
             return Result.failure(
                 IllegalArgumentException("Refresh token must not be blank")
@@ -52,13 +57,19 @@ internal class DefaultTokenRefreshClient(
                 RefreshRequest(refreshToken = refreshToken)
             ).execute()
         }.mapCatching { response ->
-            check(response.accessToken.isNotBlank()) {
+            val session = response.session
+
+            check(session.accessToken.isNotBlank()) {
                 "Refresh response access token is blank"
             }
-            check(response.refreshToken.isNotBlank()) {
+            check(session.refreshToken.isNotBlank()) {
                 "Refresh response refresh token is blank"
             }
-            response
+
+            RefreshedTokens(
+                accessToken = session.accessToken,
+                refreshToken = session.refreshToken
+            )
         }
     }
 
