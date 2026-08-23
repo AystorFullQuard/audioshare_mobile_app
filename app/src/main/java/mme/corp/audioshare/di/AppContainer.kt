@@ -9,10 +9,12 @@ import kotlinx.coroutines.flow.stateIn
 import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
+import mme.corp.audioshare.data.api.DevicesApi
 import mme.corp.audioshare.data.api.PresenceApi
 import mme.corp.audioshare.data.api.RoomsApi
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.data.repository.BootstrapRepository
+import mme.corp.audioshare.data.repository.DeviceRepository
 import mme.corp.audioshare.data.repository.PresenceRepository
 import mme.corp.audioshare.data.repository.RoomRepository
 import mme.corp.audioshare.data.storage.SessionManager
@@ -48,6 +50,9 @@ class AppContainer(
     private val bootstrapApi: BootstrapApi =
         ApiClient.create(BootstrapApi::class.java)
 
+    private val devicesApi: DevicesApi =
+        ApiClient.create(DevicesApi::class.java)
+
     private val presenceApi: PresenceApi =
         ApiClient.create(PresenceApi::class.java)
 
@@ -57,6 +62,11 @@ class AppContainer(
     val bootstrapRepository = BootstrapRepository(
         bootstrapApi = bootstrapApi,
         deviceIdStore = sessionManager,
+        logger = appLogger
+    )
+
+    val deviceRepository = DeviceRepository(
+        devicesApi = devicesApi,
         logger = appLogger
     )
 
