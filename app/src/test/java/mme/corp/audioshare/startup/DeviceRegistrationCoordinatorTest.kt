@@ -94,6 +94,34 @@ class DeviceRegistrationCoordinatorTest {
     }
 
     @Test
+    fun recoveryClearsStaleDeviceAndPersistsReplacement() = runTest {
+        val api = RecordingDevicesApi()
+        val store = FakeDeviceIdStore(STALE_DEVICE_ID)
+        val coordinator = coordinator(api, store)
+
+        val result = coordinator.recoverRegistration(metadata())
+
+        assertEquals(DEVICE_ID, result.getOrThrow())
+        assertEquals(1, api.requestCount)
+        assertEquals(DEVICE_ID, store.storedDeviceId)
+    }
+
+    @Test
+    fun failedRecoveryRegistrationLeavesStaleDeviceInvalidated() = runTest {
+        val expected = IllegalStateException("registration failed")
+        val api = RecordingDevicesApi(failure = expected)
+        val store = FakeDeviceIdStore(STALE_DEVICE_ID)
+        val coordinator = coordinator(api, store)
+
+        val result = coordinator.recoverRegistration(metadata())
+
+        assertTrue(result.isFailure)
+        assertSame(expected, result.exceptionOrNull())
+        assertEquals(1, api.requestCount)
+        assertNull(store.storedDeviceId)
+    }
+
+    @Test
     fun registrationCancellationIsPropagated() = runTest {
         val expected = CancellationException("cancelled")
         val api = RecordingDevicesApi(failure = expected)
@@ -133,6 +161,7 @@ class DeviceRegistrationCoordinatorTest {
 
     private companion object {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
+        const val STALE_DEVICE_ID = "99999999-9999-9999-9999-999999999999"
 
         fun metadata() = SessionBootstrapMetadata(
             deviceName = "Pixel 10 Pro",

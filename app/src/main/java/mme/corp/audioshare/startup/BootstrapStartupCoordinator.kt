@@ -56,7 +56,7 @@ class BootstrapStartupCoordinator(
 
         val metadata = request.toSessionBootstrapMetadata()
 
-        val deviceId = deviceRegistrationResolver.resolveOrRegister(metadata)
+        val initialDeviceId = deviceRegistrationResolver.resolveOrRegister(metadata)
             .getOrElse { exception ->
                 logFailure("Device resolution failed", exception)
                 return Result.failure(exception)
@@ -64,11 +64,15 @@ class BootstrapStartupCoordinator(
 
         logger.info(TAG, "Registered device resolved for startup")
 
-        val sessionBootstrap = sessionBootstrapLoader.loadSessionBootstrap(metadata)
-            .getOrElse { exception ->
-                logFailure("Session bootstrap failed", exception)
-                return Result.failure(exception)
-            }
+        val bootstrapResolution = loadSessionBootstrapWithRecovery(
+            metadata = metadata,
+            initialDeviceId = initialDeviceId
+        ).getOrElse { exception ->
+            logFailure("Session bootstrap failed", exception)
+            return Result.failure(exception)
+        }
+
+        val sessionBootstrap = bootstrapResolution.response
 
         logger.info(
             TAG,
@@ -130,13 +134,60 @@ class BootstrapStartupCoordinator(
 
         return Result.success(
             BootstrapStartupSnapshot(
-                deviceId = deviceId,
+                deviceId = bootstrapResolution.deviceId,
                 sessionBootstrap = sessionBootstrap,
                 roomSession = roomSession,
                 presence = presence
             )
         )
     }
+
+    private suspend fun loadSessionBootstrapWithRecovery(
+        metadata: SessionBootstrapMetadata,
+        initialDeviceId: String
+    ): Result<SessionBootstrapResolution> {
+        val firstAttempt = sessionBootstrapLoader.loadSessionBootstrap(metadata)
+
+        firstAttempt.getOrNull()?.let { response ->
+            return Result.success(
+                SessionBootstrapResolution(
+                    deviceId = initialDeviceId,
+                    response = response
+                )
+            )
+        }
+
+        val firstFailure = firstAttempt.exceptionOrNull()
+            ?: return Result.failure(
+                IllegalStateException("Session bootstrap failed without an exception")
+            )
+
+        if (!firstFailure.requiresDeviceRegistrationRecovery()) {
+            return Result.failure(firstFailure)
+        }
+
+        logger.warn(
+            TAG,
+            "Session bootstrap rejected persisted device; attempting one recovery"
+        )
+
+        val recoveredDeviceId = deviceRegistrationResolver
+            .recoverRegistration(metadata)
+            .getOrElse { exception ->
+                return Result.failure(exception)
+            }
+
+        return sessionBootstrapLoader.loadSessionBootstrap(metadata)
+            .map { response ->
+                SessionBootstrapResolution(
+                    deviceId = recoveredDeviceId,
+                    response = response
+                )
+            }
+    }
+
+    private fun Throwable.requiresDeviceRegistrationRecovery(): Boolean =
+        this is ApiException && apiError.code in RECOVERABLE_DEVICE_ERROR_CODES
 
     private fun BootstrapStartupRequest.toSessionBootstrapMetadata() =
         SessionBootstrapMetadata(
@@ -175,6 +226,11 @@ class BootstrapStartupCoordinator(
     private fun Throwable.safeTypeName(): String =
         this::class.java.simpleName.ifBlank { "Throwable" }
 
+    private data class SessionBootstrapResolution(
+        val deviceId: String,
+        val response: SessionBootstrapResponse
+    )
+
     private class RoomPresenceMismatchException :
         IllegalStateException(
             "Room session changed during startup; retry is required"
@@ -182,5 +238,11 @@ class BootstrapStartupCoordinator(
 
     private companion object {
         const val TAG = "BootstrapStartup"
+
+        val RECOVERABLE_DEVICE_ERROR_CODES = setOf(
+            "DEVICE_NOT_OWNED",
+            "DEVICE_NOT_FOUND",
+            "DEVICE_REGISTRATION_REQUIRED"
+        )
     }
 }

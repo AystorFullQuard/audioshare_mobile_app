@@ -6,8 +6,12 @@ import mme.corp.audioshare.data.repository.SessionBootstrapMetadata
 import mme.corp.audioshare.data.storage.DeviceIdStore
 import mme.corp.audioshare.logging.AppLogger
 
-fun interface DeviceRegistrationResolver {
+interface DeviceRegistrationResolver {
     suspend fun resolveOrRegister(
+        metadata: SessionBootstrapMetadata
+    ): Result<String>
+
+    suspend fun recoverRegistration(
         metadata: SessionBootstrapMetadata
     ): Result<String>
 }
@@ -36,6 +40,28 @@ class DeviceRegistrationCoordinator(
             "No persisted device; registering current installation"
         )
 
+        return registerAndPersist(metadata)
+    }
+
+    override suspend fun recoverRegistration(
+        metadata: SessionBootstrapMetadata
+    ): Result<String> {
+        logger.warn(
+            TAG,
+            "Replacing stale persisted device registration"
+        )
+
+        clearDeviceId().getOrElse { exception ->
+            logFailure("Stale device invalidation failed", exception)
+            return Result.failure(exception)
+        }
+
+        return registerAndPersist(metadata)
+    }
+
+    private suspend fun registerAndPersist(
+        metadata: SessionBootstrapMetadata
+    ): Result<String> {
         val registeredDevice = deviceRepository.registerDevice(
             deviceName = metadata.deviceName.orEmpty(),
             manufacturer = metadata.manufacturer.orEmpty(),
@@ -66,6 +92,15 @@ class DeviceRegistrationCoordinator(
 
     private suspend fun readDeviceId(): Result<String?> = try {
         Result.success(deviceIdStore.getDeviceId())
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (exception: Exception) {
+        Result.failure(exception)
+    }
+
+    private suspend fun clearDeviceId(): Result<Unit> = try {
+        deviceIdStore.clearDeviceId()
+        Result.success(Unit)
     } catch (exception: CancellationException) {
         throw exception
     } catch (exception: Exception) {

@@ -14,6 +14,8 @@ import mme.corp.audioshare.data.model.presence.PresenceSnapshot
 import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.data.repository.SessionBootstrapLoader
 import mme.corp.audioshare.data.repository.SessionBootstrapMetadata
+import mme.corp.audioshare.exception.ApiErrorResponse
+import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.presence.PresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceHeartbeatFailure
 import mme.corp.audioshare.presence.PresenceRuntimeController
@@ -84,6 +86,141 @@ class BootstrapStartupCoordinatorTest {
         assertTrue(result.isFailure)
         assertEquals(
             listOf("device-resolve", "session-bootstrap"),
+            events
+        )
+    }
+
+    @Test
+    fun recoverableDeviceErrorsReplaceRegistrationAndRetryBootstrapOnce() = runTest {
+        RECOVERABLE_DEVICE_ERRORS.forEach { (httpCode, apiCode) ->
+            val events = mutableListOf<String>()
+            val resolver = RecordingRecoveryDeviceResolver(events)
+            val loader = SequencedSessionBootstrapLoader(
+                events = events,
+                results = listOf(
+                    Result.failure(apiException(httpCode, apiCode)),
+                    Result.success(SessionBootstrapResponse())
+                )
+            )
+            val coordinator = recoveryCoordinator(events, resolver, loader)
+
+            val result = coordinator.initialize(BootstrapStartupRequest())
+
+            assertTrue("Recovery failed for $apiCode", result.isSuccess)
+            assertEquals(RECOVERED_DEVICE_ID, result.getOrThrow().deviceId)
+            assertEquals(1, resolver.recoveryCount)
+            assertEquals(2, loader.requestCount)
+            assertEquals(
+                listOf(
+                    "device-resolve",
+                    "session-bootstrap",
+                    "device-recover",
+                    "session-bootstrap",
+                    "room-restore",
+                    "heartbeat",
+                    "runtime-activate"
+                ),
+                events
+            )
+        }
+    }
+
+    @Test
+    fun repeatedRecoverableDeviceFailureStopsAfterSingleRecovery() = runTest {
+        val events = mutableListOf<String>()
+        val resolver = RecordingRecoveryDeviceResolver(events)
+        val staleFailure = Result.failure<SessionBootstrapResponse>(
+            apiException(403, "DEVICE_NOT_OWNED")
+        )
+        val loader = SequencedSessionBootstrapLoader(
+            events = events,
+            results = listOf(staleFailure, staleFailure)
+        )
+        val coordinator = recoveryCoordinator(events, resolver, loader)
+
+        val result = coordinator.initialize(BootstrapStartupRequest())
+
+        assertTrue(result.isFailure)
+        assertEquals(1, resolver.recoveryCount)
+        assertEquals(2, loader.requestCount)
+        assertEquals(
+            listOf(
+                "device-resolve",
+                "session-bootstrap",
+                "device-recover",
+                "session-bootstrap"
+            ),
+            events
+        )
+    }
+
+    @Test
+    fun transientServerFailureDoesNotTriggerDeviceRecovery() = runTest {
+        val events = mutableListOf<String>()
+        val resolver = RecordingRecoveryDeviceResolver(events)
+        val loader = SequencedSessionBootstrapLoader(
+            events = events,
+            results = listOf(
+                Result.failure(apiException(503, "INTERNAL_ERROR"))
+            )
+        )
+        val coordinator = recoveryCoordinator(events, resolver, loader)
+
+        val result = coordinator.initialize(BootstrapStartupRequest())
+
+        assertTrue(result.isFailure)
+        assertEquals(0, resolver.recoveryCount)
+        assertEquals(1, loader.requestCount)
+        assertEquals(listOf("device-resolve", "session-bootstrap"), events)
+    }
+
+    @Test
+    fun deviceLimitReachedDoesNotTriggerDeviceRecovery() = runTest {
+        val events = mutableListOf<String>()
+        val resolver = RecordingRecoveryDeviceResolver(events)
+        val loader = SequencedSessionBootstrapLoader(
+            events = events,
+            results = listOf(
+                Result.failure(apiException(409, "DEVICE_LIMIT_REACHED"))
+            )
+        )
+        val coordinator = recoveryCoordinator(events, resolver, loader)
+
+        val result = coordinator.initialize(BootstrapStartupRequest())
+
+        assertTrue(result.isFailure)
+        assertEquals(0, resolver.recoveryCount)
+        assertEquals(1, loader.requestCount)
+    }
+
+    @Test
+    fun failedReplacementRegistrationStopsBeforeBootstrapRetry() = runTest {
+        val events = mutableListOf<String>()
+        val resolver = RecordingRecoveryDeviceResolver(
+            events = events,
+            recoveryResult = Result.failure(
+                IllegalStateException("replacement registration failed")
+            )
+        )
+        val loader = SequencedSessionBootstrapLoader(
+            events = events,
+            results = listOf(
+                Result.failure(apiException(403, "DEVICE_NOT_OWNED"))
+            )
+        )
+        val coordinator = recoveryCoordinator(events, resolver, loader)
+
+        val result = coordinator.initialize(BootstrapStartupRequest())
+
+        assertTrue(result.isFailure)
+        assertEquals(1, resolver.recoveryCount)
+        assertEquals(1, loader.requestCount)
+        assertEquals(
+            listOf(
+                "device-resolve",
+                "session-bootstrap",
+                "device-recover"
+            ),
             events
         )
     }
@@ -188,6 +325,22 @@ class BootstrapStartupCoordinatorTest {
         assertEquals(expectedMetadata(), loader.metadata)
     }
 
+    private fun recoveryCoordinator(
+        events: MutableList<String>,
+        resolver: DeviceRegistrationResolver,
+        loader: SessionBootstrapLoader
+    ) = BootstrapStartupCoordinator(
+        deviceRegistrationResolver = resolver,
+        sessionBootstrapLoader = loader,
+        roomSessionRestorer = FakeRoomRestorer(events),
+        roomSessionRuntimeController = FakeRoomRuntimeController(events),
+        heartbeatCoordinator = FakeHeartbeatCoordinator(
+            Result.success(presenceSnapshot()),
+            events
+        ),
+        presenceRuntimeController = FakeRuntimeController(events)
+    )
+
     private fun coordinator(
         events: MutableList<String>,
         deviceResult: Result<String> = Result.success(DEVICE_ID),
@@ -228,6 +381,13 @@ class BootstrapStartupCoordinatorTest {
             events += "device-resolve"
             return result
         }
+
+        override suspend fun recoverRegistration(
+            metadata: SessionBootstrapMetadata
+        ): Result<String> {
+            events += "device-recover"
+            return Result.success(RECOVERED_DEVICE_ID)
+        }
     }
 
     private class CapturingDeviceRegistrationResolver(
@@ -242,6 +402,38 @@ class BootstrapStartupCoordinatorTest {
             events += "device-resolve"
             return Result.success(DEVICE_ID)
         }
+
+        override suspend fun recoverRegistration(
+            metadata: SessionBootstrapMetadata
+        ): Result<String> {
+            this.metadata = metadata
+            events += "device-recover"
+            return Result.success(RECOVERED_DEVICE_ID)
+        }
+    }
+
+    private class RecordingRecoveryDeviceResolver(
+        private val events: MutableList<String>,
+        private val recoveryResult: Result<String> =
+            Result.success(RECOVERED_DEVICE_ID)
+    ) : DeviceRegistrationResolver {
+        var recoveryCount = 0
+            private set
+
+        override suspend fun resolveOrRegister(
+            metadata: SessionBootstrapMetadata
+        ): Result<String> {
+            events += "device-resolve"
+            return Result.success(DEVICE_ID)
+        }
+
+        override suspend fun recoverRegistration(
+            metadata: SessionBootstrapMetadata
+        ): Result<String> {
+            recoveryCount += 1
+            events += "device-recover"
+            return recoveryResult
+        }
     }
 
     private class FakeSessionBootstrapLoader(
@@ -253,6 +445,27 @@ class BootstrapStartupCoordinatorTest {
         ): Result<SessionBootstrapResponse> {
             events += "session-bootstrap"
             return result
+        }
+    }
+
+    private class SequencedSessionBootstrapLoader(
+        private val events: MutableList<String>,
+        results: List<Result<SessionBootstrapResponse>>
+    ) : SessionBootstrapLoader {
+        private val pendingResults = ArrayDeque(results)
+
+        var requestCount = 0
+            private set
+
+        override suspend fun loadSessionBootstrap(
+            metadata: SessionBootstrapMetadata
+        ): Result<SessionBootstrapResponse> {
+            requestCount += 1
+            events += "session-bootstrap"
+            check(pendingResults.isNotEmpty()) {
+                "Unexpected session bootstrap attempt"
+            }
+            return pendingResults.removeFirst()
         }
     }
 
@@ -336,6 +549,21 @@ class BootstrapStartupCoordinatorTest {
 
     private companion object {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
+        const val RECOVERED_DEVICE_ID = "33333333-3333-3333-3333-333333333333"
+
+        val RECOVERABLE_DEVICE_ERRORS = listOf(
+            403 to "DEVICE_NOT_OWNED",
+            404 to "DEVICE_NOT_FOUND",
+            409 to "DEVICE_REGISTRATION_REQUIRED"
+        )
+
+        fun apiException(httpCode: Int, code: String) = ApiException(
+            httpCode = httpCode,
+            apiError = ApiErrorResponse(
+                code = code,
+                message = code
+            )
+        )
 
         fun startupRequest() = BootstrapStartupRequest(
             displayName = "Test User",

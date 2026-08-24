@@ -43,7 +43,7 @@ Do not combine compatibility work with unrelated cleanup or new product features
   - Remove production use of legacy `/api/v1/bootstrap`.
   - Preserve startup order: device → session bootstrap → room restore → heartbeat.
 
-- [ ] ⬜ **AS-COMPAT-04 — Stale/revoked device recovery**
+- ✅ **AS-COMPAT-04 — Stale/revoked device recovery**
   - Recover once from device-not-owned/not-found/registration-required.
   - No retry loop or registration storm.
   - Do not discard valid device state on transient network/server failures.
@@ -100,6 +100,16 @@ git status --short
 
 ```bat
 gradlew.bat :app:testDebugUnitTest --tests "mme.corp.audioshare.startup.DeviceRegistrationCoordinatorTest" --tests "mme.corp.audioshare.startup.BootstrapStartupCoordinatorTest" --tests "mme.corp.audioshare.data.repository.BootstrapRepositoryTest" --rerun-tasks --console=plain
+gradlew.bat :app:testDebugUnitTest --rerun-tasks --console=plain
+gradlew.bat :app:lintDebug :app:assembleDebug --rerun-tasks --console=plain
+git diff --check
+git status --short
+```
+
+## AS-COMPAT-04 gate
+
+```bat
+gradlew.bat :app:testDebugUnitTest --tests "mme.corp.audioshare.startup.DeviceRegistrationCoordinatorTest" --tests "mme.corp.audioshare.startup.BootstrapStartupCoordinatorTest" --rerun-tasks --console=plain
 gradlew.bat :app:testDebugUnitTest --rerun-tasks --console=plain
 gradlew.bat :app:lintDebug :app:assembleDebug --rerun-tasks --console=plain
 git diff --check
