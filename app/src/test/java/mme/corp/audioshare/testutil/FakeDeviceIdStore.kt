@@ -13,4 +13,8 @@ class FakeDeviceIdStore(
     override suspend fun saveDeviceId(deviceId: String) {
         storedDeviceId = deviceId
     }
+
+    override suspend fun clearDeviceId() {
+        storedDeviceId = null
+    }
 }

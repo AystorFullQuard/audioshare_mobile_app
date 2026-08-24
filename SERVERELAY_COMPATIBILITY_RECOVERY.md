@@ -27,7 +27,7 @@ Do not combine compatibility work with unrelated cleanup or new product features
   - MockWebServer contract tests.
   - AppContainer foundation wiring
 
-- [ ] ⬜ **AS-COMPAT-01B — User-scoped persistent device identity**
+- ✅ **AS-COMPAT-01B — User-scoped persistent device identity**
   - Preserve registered device identity across auth cleanup.
   - User-scoped device mapping in the existing SessionManager/DataStore.
   - Legacy `device_id` migration.
@@ -69,6 +69,18 @@ Do not combine compatibility work with unrelated cleanup or new product features
 ```bat
 gradlew.bat :app:testDebugUnitTest --tests "mme.corp.audioshare.data.repository.DeviceRepositoryTest" --rerun-tasks --console=plain
 gradlew.bat :app:compileDebugKotlin --rerun-tasks --console=plain
+gradlew.bat :app:lintDebug :app:assembleDebug --rerun-tasks --console=plain
+git diff --check
+git status --short
+```
+
+## AS-COMPAT-01B gate
+
+```bat
+gradlew.bat :app:testDebugUnitTest --tests "mme.corp.audioshare.data.storage.DeviceIdentityPreferencesTest" --rerun-tasks --console=plain
+gradlew.bat :app:assembleDebugAndroidTest --rerun-tasks --console=plain
+gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=mme.corp.audioshare.data.storage.SessionManagerTokenStoreTest --rerun-tasks --console=plain
+gradlew.bat :app:testDebugUnitTest --rerun-tasks --console=plain
 gradlew.bat :app:lintDebug :app:assembleDebug --rerun-tasks --console=plain
 git diff --check
 git status --short

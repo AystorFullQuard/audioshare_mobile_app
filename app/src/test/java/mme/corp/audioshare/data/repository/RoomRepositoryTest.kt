@@ -292,6 +292,8 @@ class RoomRepositoryTest {
                 override suspend fun getDeviceId(): String = throw expected
 
                 override suspend fun saveDeviceId(deviceId: String) = Unit
+
+                override suspend fun clearDeviceId() = Unit
             }
         )
 

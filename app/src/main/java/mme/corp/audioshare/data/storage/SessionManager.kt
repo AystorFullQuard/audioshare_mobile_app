@@ -36,8 +36,6 @@ class SessionManager(
         private val SESSION_ID =
             stringPreferencesKey("session_id")
 
-        private val DEVICE_ID =
-            stringPreferencesKey("device_id")
     }
 
     init {
@@ -148,10 +146,17 @@ class SessionManager(
                 }
             }
             .map { preferences ->
+                val currentUserId = preferences[USER_ID]
+                val id = DeviceIdentityPreferences.read(
+                    preferences = preferences,
+                    userId = currentUserId
+                )
 
-                val id = preferences[DEVICE_ID]
-
-                Log.v(TAG, "DeviceId requested = $id")
+                Log.v(
+                    TAG,
+                    "DeviceId requested. UserExists=${!currentUserId.isNullOrBlank()}, " +
+                        "deviceExists=${!id.isNullOrBlank()}"
+                )
 
                 id
             }
@@ -211,9 +216,9 @@ class SessionManager(
 
             context.dataStore.edit { preferences ->
 
-                Log.d(TAG, "Clearing DataStore")
+                Log.d(TAG, "Clearing authentication session")
 
-                preferences.clear()
+                clearAuthenticationSession(preferences)
             }
 
             Log.i(TAG, "Session cleared")
@@ -269,7 +274,10 @@ class SessionManager(
 
             sessionId = preferences[SESSION_ID],
 
-            deviceId = preferences[DEVICE_ID]
+            deviceId = DeviceIdentityPreferences.read(
+                preferences = preferences,
+                userId = preferences[USER_ID]
+            )
         )
     }
 
@@ -277,9 +285,30 @@ class SessionManager(
         Log.d(TAG, "getDeviceId()")
 
         return try {
-            deviceId.first()
-        } catch (e: Exception) {
-            Log.e(TAG, "getDeviceId() FAILED", e)
+            var resolvedDeviceId: String? = null
+
+            context.dataStore.edit { preferences ->
+                val currentUserId = preferences[USER_ID]
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
+
+                if (currentUserId != null) {
+                    resolvedDeviceId = DeviceIdentityPreferences.migrateAndRead(
+                        preferences = preferences,
+                        userId = currentUserId
+                    )
+                }
+            }
+
+            Log.d(
+                TAG,
+                "Device id exists=${!resolvedDeviceId.isNullOrBlank()}"
+            )
+            resolvedDeviceId
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Log.e(TAG, "getDeviceId() FAILED", exception)
             null
         }
     }
@@ -290,7 +319,28 @@ class SessionManager(
         Log.d(TAG, "saveDeviceId()")
 
         context.dataStore.edit { preferences ->
-            preferences[DEVICE_ID] = deviceId
+            val currentUserId = requireCurrentUserId(preferences)
+            DeviceIdentityPreferences.save(
+                preferences = preferences,
+                userId = currentUserId,
+                deviceId = deviceId
+            )
+        }
+    }
+
+    override suspend fun clearDeviceId() {
+        Log.d(TAG, "clearDeviceId()")
+
+        context.dataStore.edit { preferences ->
+            val currentUserId = preferences[USER_ID]
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?: return@edit
+
+            DeviceIdentityPreferences.clear(
+                preferences = preferences,
+                userId = currentUserId
+            )
         }
     }
 
@@ -391,7 +441,7 @@ class SessionManager(
                     currentAccessToken == expected.accessToken &&
                     currentRefreshToken == expected.refreshToken
                 ) {
-                    preferences.clear()
+                    clearAuthenticationSession(preferences)
                     cleared = true
                 }
             }
@@ -406,6 +456,22 @@ class SessionManager(
             Log.d(TAG, "==========================================")
         }
     }
+
+    private fun clearAuthenticationSession(
+        preferences: MutablePreferences
+    ) {
+        preferences.remove(ACCESS_TOKEN)
+        preferences.remove(REFRESH_TOKEN)
+        preferences.remove(USER_ID)
+        preferences.remove(SESSION_ID)
+    }
+
+    private fun requireCurrentUserId(
+        preferences: MutablePreferences
+    ): String = preferences[USER_ID]
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?: error("Cannot persist device id without an authenticated user")
 
     suspend fun hasActiveSession(): Boolean {
 

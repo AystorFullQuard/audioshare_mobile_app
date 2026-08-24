@@ -24,18 +24,18 @@ class SessionManagerTokenStoreTest {
             .context
 
         sessionManager = SessionManager(context)
-        sessionManager.clearSession()
-        sessionManager.saveSession(
-            accessToken = OLD_ACCESS_TOKEN,
-            refreshToken = OLD_REFRESH_TOKEN,
+        prepareUser(
             userId = USER_ID,
             sessionId = SESSION_ID
         )
+        sessionManager.clearDeviceId()
         sessionManager.saveDeviceId(DEVICE_ID)
     }
 
     @After
     fun tearDown() = runBlocking {
+        clearUserDevice(USER_ID, SESSION_ID)
+        clearUserDevice(SECOND_USER_ID, SECOND_SESSION_ID)
         sessionManager.clearSession()
     }
 
@@ -69,24 +69,50 @@ class SessionManagerTokenStoreTest {
     }
 
     @Test
-    fun matchingSessionInvalidationClearsCompleteLocalSession() =
-        runBlocking {
-            val cleared = sessionManager.clearSessionIfMatches(
-                TokenSnapshot(
-                    accessToken = OLD_ACCESS_TOKEN,
-                    refreshToken = OLD_REFRESH_TOKEN
-                )
+    fun clearSessionPreservesDeviceIdentityForSameUserRelogin() = runBlocking {
+        sessionManager.clearSession()
+
+        val loggedOutSession = sessionManager.getSession()
+        assertNull(loggedOutSession.accessToken)
+        assertNull(loggedOutSession.refreshToken)
+        assertNull(loggedOutSession.userId)
+        assertNull(loggedOutSession.sessionId)
+        assertNull(loggedOutSession.deviceId)
+
+        prepareUser(
+            userId = USER_ID,
+            sessionId = "session-id-after-login"
+        )
+
+        assertEquals(DEVICE_ID, sessionManager.getDeviceId())
+        assertEquals(DEVICE_ID, sessionManager.getSession().deviceId)
+    }
+
+    @Test
+    fun matchingSessionInvalidationClearsAuthButPreservesDeviceIdentity() = runBlocking {
+        val cleared = sessionManager.clearSessionIfMatches(
+            TokenSnapshot(
+                accessToken = OLD_ACCESS_TOKEN,
+                refreshToken = OLD_REFRESH_TOKEN
             )
+        )
 
-            val session = sessionManager.getSession()
+        val clearedSession = sessionManager.getSession()
 
-            assertTrue(cleared)
-            assertNull(session.accessToken)
-            assertNull(session.refreshToken)
-            assertNull(session.userId)
-            assertNull(session.sessionId)
-            assertNull(session.deviceId)
-        }
+        assertTrue(cleared)
+        assertNull(clearedSession.accessToken)
+        assertNull(clearedSession.refreshToken)
+        assertNull(clearedSession.userId)
+        assertNull(clearedSession.sessionId)
+        assertNull(clearedSession.deviceId)
+
+        prepareUser(
+            userId = USER_ID,
+            sessionId = "session-id-after-recovery"
+        )
+
+        assertEquals(DEVICE_ID, sessionManager.getDeviceId())
+    }
 
     @Test
     fun staleSessionInvalidationDoesNotClearNewerTokenGeneration() = runBlocking {
@@ -114,6 +140,37 @@ class SessionManagerTokenStoreTest {
     }
 
     @Test
+    fun deviceIdentityIsScopedToAuthenticatedUser() = runBlocking {
+        sessionManager.clearSession()
+        prepareUser(SECOND_USER_ID, SECOND_SESSION_ID)
+        sessionManager.clearDeviceId()
+        sessionManager.saveDeviceId(SECOND_DEVICE_ID)
+
+        sessionManager.clearSession()
+        prepareUser(USER_ID, SESSION_ID)
+        assertEquals(DEVICE_ID, sessionManager.getDeviceId())
+
+        sessionManager.clearSession()
+        prepareUser(SECOND_USER_ID, SECOND_SESSION_ID)
+        assertEquals(SECOND_DEVICE_ID, sessionManager.getDeviceId())
+    }
+
+    @Test
+    fun clearDeviceIdOnlyInvalidatesCurrentUsersMapping() = runBlocking {
+        sessionManager.clearSession()
+        prepareUser(SECOND_USER_ID, SECOND_SESSION_ID)
+        sessionManager.clearDeviceId()
+        sessionManager.saveDeviceId(SECOND_DEVICE_ID)
+        sessionManager.clearDeviceId()
+
+        assertNull(sessionManager.getDeviceId())
+
+        sessionManager.clearSession()
+        prepareUser(USER_ID, SESSION_ID)
+        assertEquals(DEVICE_ID, sessionManager.getDeviceId())
+    }
+
+    @Test
     fun invalidTokenReplacementLeavesStoredPairUnchanged() = runBlocking {
         val blankAccessResult = runCatching {
             sessionManager.updateTokens(" ", NEW_REFRESH_TOKEN)
@@ -135,6 +192,27 @@ class SessionManagerTokenStoreTest {
         )
     }
 
+    private suspend fun prepareUser(
+        userId: String,
+        sessionId: String
+    ) {
+        sessionManager.clearSession()
+        sessionManager.saveSession(
+            accessToken = OLD_ACCESS_TOKEN,
+            refreshToken = OLD_REFRESH_TOKEN,
+            userId = userId,
+            sessionId = sessionId
+        )
+    }
+
+    private suspend fun clearUserDevice(
+        userId: String,
+        sessionId: String
+    ) {
+        prepareUser(userId, sessionId)
+        sessionManager.clearDeviceId()
+    }
+
     private companion object {
         const val OLD_ACCESS_TOKEN = "access-old"
         const val OLD_REFRESH_TOKEN = "refresh-old"
@@ -143,5 +221,8 @@ class SessionManagerTokenStoreTest {
         const val USER_ID = "user-id"
         const val SESSION_ID = "session-id"
         const val DEVICE_ID = "device-id"
+        const val SECOND_USER_ID = "user-id-two"
+        const val SECOND_SESSION_ID = "session-id-two"
+        const val SECOND_DEVICE_ID = "device-id-two"
     }
 }
