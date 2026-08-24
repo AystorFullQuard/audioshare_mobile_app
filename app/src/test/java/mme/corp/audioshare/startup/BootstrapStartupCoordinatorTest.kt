@@ -15,6 +15,7 @@ import mme.corp.audioshare.data.model.presence.PresenceSnapshot
 import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.data.repository.DeviceBootstrapper
 import mme.corp.audioshare.data.repository.SessionBootstrapLoader
+import mme.corp.audioshare.data.repository.SessionBootstrapMetadata
 import mme.corp.audioshare.presence.PresenceHeartbeatCoordinator
 import mme.corp.audioshare.presence.PresenceHeartbeatFailure
 import mme.corp.audioshare.presence.PresenceRuntimeController
@@ -165,6 +166,53 @@ class BootstrapStartupCoordinatorTest {
         )
     }
 
+    @Test
+    fun startupForwardsCurrentSessionBootstrapMetadata() = runTest {
+        val events = mutableListOf<String>()
+        val loader = CapturingSessionBootstrapLoader(events)
+        val coordinator = BootstrapStartupCoordinator(
+            deviceBootstrapper = FakeDeviceBootstrapper(
+                Result.success(bootstrapResponse()),
+                events
+            ),
+            sessionBootstrapLoader = loader,
+            roomSessionRestorer = FakeRoomRestorer(events),
+            roomSessionRuntimeController = FakeRoomRuntimeController(events),
+            heartbeatCoordinator = FakeHeartbeatCoordinator(
+                Result.success(presenceSnapshot()),
+                events
+            ),
+            presenceRuntimeController = FakeRuntimeController(events)
+        )
+
+        val result = coordinator.initialize(
+            BootstrapStartupRequest(
+                displayName = "Test User",
+                deviceName = "Pixel 10 Pro",
+                appVersion = "1.0.0",
+                platform = Platform.ANDROID,
+                manufacturer = "Google",
+                model = "Pixel 10 Pro",
+                platformVersion = "17",
+                locale = "en-US",
+                timezone = "America/Los_Angeles",
+                capabilities = listOf("rooms", "presence")
+            )
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("Test User", loader.displayName)
+        assertEquals("Pixel 10 Pro", loader.deviceName)
+        assertEquals("1.0.0", loader.appVersion)
+        assertEquals(Platform.ANDROID, loader.platform)
+        assertEquals("Google", loader.manufacturer)
+        assertEquals("Pixel 10 Pro", loader.model)
+        assertEquals("17", loader.platformVersion)
+        assertEquals("en-US", loader.locale)
+        assertEquals("America/Los_Angeles", loader.timezone)
+        assertEquals(listOf("rooms", "presence"), loader.capabilities)
+    }
+
     private class FakeDeviceBootstrapper(
         private val result: Result<BootstrapResponse>,
         private val events: MutableList<String>
@@ -184,11 +232,40 @@ class BootstrapStartupCoordinatorTest {
         private val events: MutableList<String>
     ) : SessionBootstrapLoader {
         override suspend fun loadSessionBootstrap(
-            displayName: String?,
-            deviceName: String?,
-            appVersion: String?,
-            platform: Platform
+            metadata: SessionBootstrapMetadata
         ): Result<SessionBootstrapResponse> {
+            events += "session-bootstrap"
+            return Result.success(SessionBootstrapResponse())
+        }
+    }
+
+    private class CapturingSessionBootstrapLoader(
+        private val events: MutableList<String>
+    ) : SessionBootstrapLoader {
+        var displayName: String? = null
+        var deviceName: String? = null
+        var appVersion: String? = null
+        var platform: Platform? = null
+        var manufacturer: String? = null
+        var model: String? = null
+        var platformVersion: String? = null
+        var locale: String? = null
+        var timezone: String? = null
+        var capabilities: List<String>? = null
+
+        override suspend fun loadSessionBootstrap(
+            metadata: SessionBootstrapMetadata
+        ): Result<SessionBootstrapResponse> {
+            displayName = metadata.displayName
+            deviceName = metadata.deviceName
+            appVersion = metadata.appVersion
+            platform = metadata.platform
+            manufacturer = metadata.manufacturer
+            model = metadata.model
+            platformVersion = metadata.platformVersion
+            locale = metadata.locale
+            timezone = metadata.timezone
+            capabilities = metadata.capabilities
             events += "session-bootstrap"
             return Result.success(SessionBootstrapResponse())
         }

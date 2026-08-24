@@ -7,6 +7,7 @@ import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
 import mme.corp.audioshare.data.model.presence.PresenceSnapshot
 import mme.corp.audioshare.data.repository.DeviceBootstrapper
 import mme.corp.audioshare.data.repository.SessionBootstrapLoader
+import mme.corp.audioshare.data.repository.SessionBootstrapMetadata
 import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.logging.AppLogger
 import mme.corp.audioshare.presence.PresenceHeartbeatCoordinator
@@ -19,7 +20,13 @@ data class BootstrapStartupRequest(
     val displayName: String? = null,
     val deviceName: String? = null,
     val appVersion: String? = null,
-    val platform: Platform = Platform.ANDROID
+    val platform: Platform = Platform.ANDROID,
+    val manufacturer: String? = null,
+    val model: String? = null,
+    val platformVersion: String? = null,
+    val locale: String? = null,
+    val timezone: String? = null,
+    val capabilities: List<String>? = null
 )
 
 data class BootstrapStartupSnapshot(
@@ -66,10 +73,7 @@ class BootstrapStartupCoordinator(
         )
 
         val sessionBootstrap = sessionBootstrapLoader.loadSessionBootstrap(
-            displayName = request.displayName,
-            deviceName = request.deviceName,
-            appVersion = request.appVersion,
-            platform = request.platform
+            request.toSessionBootstrapMetadata()
         ).getOrElse { exception ->
             logFailure("Session bootstrap failed", exception)
             return Result.failure(exception)
@@ -142,6 +146,20 @@ class BootstrapStartupCoordinator(
             )
         )
     }
+
+    private fun BootstrapStartupRequest.toSessionBootstrapMetadata() =
+        SessionBootstrapMetadata(
+            displayName = displayName,
+            deviceName = deviceName,
+            appVersion = appVersion,
+            platform = platform,
+            manufacturer = manufacturer,
+            model = model,
+            platformVersion = platformVersion,
+            locale = locale,
+            timezone = timezone,
+            capabilities = capabilities
+        )
 
     private fun logFailure(
         message: String,

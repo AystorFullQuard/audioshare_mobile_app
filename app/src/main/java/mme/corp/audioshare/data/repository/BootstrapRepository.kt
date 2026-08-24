@@ -5,6 +5,7 @@ import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.dto.bootstrap.BootstrapRequest
 import mme.corp.audioshare.data.dto.bootstrap.BootstrapResponse
 import mme.corp.audioshare.data.dto.bootstrap.Platform
+import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapRequest
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
 import mme.corp.audioshare.data.storage.DeviceIdStore
 import mme.corp.audioshare.exception.ApiException
@@ -22,13 +23,23 @@ interface DeviceBootstrapper {
     ): Result<BootstrapResponse>
 }
 
-interface SessionBootstrapLoader {
+data class SessionBootstrapMetadata(
+    val displayName: String? = null,
+    val deviceName: String? = null,
+    val appVersion: String? = null,
+    val platform: Platform = Platform.ANDROID,
+    val manufacturer: String? = null,
+    val model: String? = null,
+    val platformVersion: String? = null,
+    val locale: String? = null,
+    val timezone: String? = null,
+    val capabilities: List<String>? = null
+)
+
+fun interface SessionBootstrapLoader {
 
     suspend fun loadSessionBootstrap(
-        displayName: String?,
-        deviceName: String?,
-        appVersion: String?,
-        platform: Platform = Platform.ANDROID
+        metadata: SessionBootstrapMetadata
     ): Result<SessionBootstrapResponse>
 }
 
@@ -81,10 +92,7 @@ class BootstrapRepository(
     }
 
     override suspend fun loadSessionBootstrap(
-        displayName: String?,
-        deviceName: String?,
-        appVersion: String?,
-        platform: Platform
+        metadata: SessionBootstrapMetadata
     ): Result<SessionBootstrapResponse> {
         val deviceId = readDeviceId().getOrElse { exception ->
             logFailure("Session bootstrap device lookup failed", exception)
@@ -106,12 +114,18 @@ class BootstrapRepository(
             emptyBodyMessage = "Session bootstrap response body is empty"
         ) {
             bootstrapApi.sessionBootstrap(
-                BootstrapRequest(
+                SessionBootstrapRequest(
                     deviceId = deviceId,
-                    displayName = displayName,
-                    deviceName = deviceName,
-                    platform = platform,
-                    appVersion = appVersion
+                    displayName = metadata.displayName,
+                    deviceName = metadata.deviceName,
+                    manufacturer = metadata.manufacturer,
+                    model = metadata.model,
+                    platform = metadata.platform,
+                    platformVersion = metadata.platformVersion,
+                    appVersion = metadata.appVersion,
+                    locale = metadata.locale,
+                    timezone = metadata.timezone,
+                    capabilities = metadata.capabilities
                 )
             )
         }.onSuccess { response ->

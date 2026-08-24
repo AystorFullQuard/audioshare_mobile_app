@@ -25,6 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import mme.corp.audioshare.AudioShareApplication
 import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.startup.BootstrapStartupRequest
+import java.util.Locale
+import java.util.TimeZone
 
 @Composable
 fun BootstrapScreen(
@@ -38,7 +40,12 @@ fun BootstrapScreen(
             startupCoordinator = application.container.bootstrapStartupCoordinator,
             startupRequest = BootstrapStartupRequest(
                 deviceName = Build.MODEL.takeIf { it.isNotBlank() },
-                appVersion = BuildConfig.VERSION_NAME
+                manufacturer = Build.MANUFACTURER.takeIf { it.isNotBlank() },
+                model = Build.MODEL.takeIf { it.isNotBlank() },
+                platformVersion = Build.VERSION.RELEASE.takeIf { it.isNotBlank() },
+                appVersion = BuildConfig.VERSION_NAME,
+                locale = Locale.getDefault().toLanguageTag(),
+                timezone = TimeZone.getDefault().id
             )
         )
     )
