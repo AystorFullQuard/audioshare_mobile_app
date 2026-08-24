@@ -41,7 +41,7 @@ class AuthInterceptorTest {
 
         execute(client, "/api/v1/auth/login")
         execute(client, "/api/v1/auth/refresh")
-        execute(client, "/api/v1/bootstrap")
+        execute(client, "/api/v1/session/bootstrap")
         execute(client, "/api/v1/presence/heartbeat")
 
         assertNull(server.takeRequest().getHeader("Authorization"))

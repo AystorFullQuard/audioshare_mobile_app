@@ -27,6 +27,7 @@ import mme.corp.audioshare.room.DefaultRoomSessionCoordinator
 import mme.corp.audioshare.runtime.SessionRuntimeReconciler
 import mme.corp.audioshare.runtime.guardAuthenticatedRuntime
 import mme.corp.audioshare.startup.BootstrapStartupCoordinator
+import mme.corp.audioshare.startup.DeviceRegistrationCoordinator
 
 class AppContainer(
     val sessionManager: SessionManager
@@ -117,9 +118,16 @@ class AppContainer(
             sessionRuntimeReconciler = sessionRuntimeReconciler
         )
 
+    private val deviceRegistrationCoordinator =
+        DeviceRegistrationCoordinator(
+            deviceRepository = deviceRepository,
+            deviceIdStore = sessionManager,
+            logger = appLogger
+        )
+
     val bootstrapStartupCoordinator =
         BootstrapStartupCoordinator(
-            deviceBootstrapper = bootstrapRepository,
+            deviceRegistrationResolver = deviceRegistrationCoordinator,
             sessionBootstrapLoader = bootstrapRepository,
             roomSessionRestorer = roomSessionCoordinator,
             roomSessionRuntimeController = roomSessionCoordinator,

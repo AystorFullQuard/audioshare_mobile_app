@@ -11,7 +11,6 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -29,54 +28,6 @@ class BootstrapRepositoryTest {
     @After
     fun tearDown() {
         server.shutdown()
-    }
-
-    @Test
-    fun sendsStoredDeviceIdAndPersistsResolvedDeviceId() = runTest {
-        server.enqueue(successResponse())
-        val store = FakeDeviceIdStore("stored-device-id")
-        val repository = repository(store)
-
-        val result = repository.bootstrap(
-            displayName = "Test User",
-            deviceName = "Pixel 8",
-            appVersion = "1.0"
-        )
-
-        assertTrue(result.isSuccess)
-        assertEquals(PresenceState.ONLINE, result.getOrThrow().presenceState)
-        assertEquals("resolved-device-id", store.storedDeviceId)
-
-        val body = JsonParser.parseString(
-            server.takeRequest().body.readUtf8()
-        ).asJsonObject
-
-        assertEquals("stored-device-id", body["deviceId"].asString)
-        assertEquals("Test User", body["displayName"].asString)
-        assertEquals("Pixel 8", body["deviceName"].asString)
-        assertEquals("ANDROID", body["platform"].asString)
-        assertEquals("1.0", body["appVersion"].asString)
-    }
-
-    @Test
-    fun firstBootstrapDoesNotSendNullDeviceId() = runTest {
-        server.enqueue(successResponse())
-        val store = FakeDeviceIdStore()
-        val repository = repository(store)
-
-        val result = repository.bootstrap(
-            displayName = null,
-            deviceName = "Pixel 8",
-            appVersion = null
-        )
-
-        assertTrue(result.isSuccess)
-
-        val body = JsonParser.parseString(
-            server.takeRequest().body.readUtf8()
-        ).asJsonObject
-
-        assertFalse(body.has("deviceId"))
     }
 
     @Test
@@ -142,20 +93,6 @@ class BootstrapRepositoryTest {
         val api = server.retrofit().create(BootstrapApi::class.java)
         return BootstrapRepository(api, store)
     }
-
-    private fun successResponse(): MockResponse = MockResponse()
-        .setResponseCode(200)
-        .setHeader("Content-Type", "application/json")
-        .setBody(
-            """
-            {
-              "userId": "user-id",
-              "deviceId": "resolved-device-id",
-              "displayName": "Test User",
-              "presenceState": "ONLINE"
-            }
-            """.trimIndent()
-        )
 
     private fun sessionBootstrapSuccessResponse(): MockResponse = MockResponse()
         .setResponseCode(200)

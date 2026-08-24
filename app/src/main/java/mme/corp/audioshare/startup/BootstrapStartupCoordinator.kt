@@ -1,11 +1,9 @@
 package mme.corp.audioshare.startup
 
 import kotlinx.coroutines.CancellationException
-import mme.corp.audioshare.data.dto.bootstrap.BootstrapResponse
 import mme.corp.audioshare.data.dto.bootstrap.Platform
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
 import mme.corp.audioshare.data.model.presence.PresenceSnapshot
-import mme.corp.audioshare.data.repository.DeviceBootstrapper
 import mme.corp.audioshare.data.repository.SessionBootstrapLoader
 import mme.corp.audioshare.data.repository.SessionBootstrapMetadata
 import mme.corp.audioshare.exception.ApiException
@@ -30,14 +28,14 @@ data class BootstrapStartupRequest(
 )
 
 data class BootstrapStartupSnapshot(
-    val bootstrap: BootstrapResponse,
+    val deviceId: String,
     val sessionBootstrap: SessionBootstrapResponse,
     val roomSession: RoomSessionState,
     val presence: PresenceSnapshot
 )
 
 class BootstrapStartupCoordinator(
-    private val deviceBootstrapper: DeviceBootstrapper,
+    private val deviceRegistrationResolver: DeviceRegistrationResolver,
     private val sessionBootstrapLoader: SessionBootstrapLoader,
     private val roomSessionRestorer: RoomSessionBootstrapRestorer,
     private val roomSessionRuntimeController: RoomSessionRuntimeController,
@@ -56,28 +54,21 @@ class BootstrapStartupCoordinator(
                 "hasAppVersion=${!request.appVersion.isNullOrBlank()}"
         )
 
-        val bootstrap = deviceBootstrapper.bootstrap(
-            displayName = request.displayName,
-            deviceName = request.deviceName,
-            appVersion = request.appVersion,
-            platform = request.platform
-        ).getOrElse { exception ->
-            logFailure("Device bootstrap failed", exception)
-            return Result.failure(exception)
-        }
+        val metadata = request.toSessionBootstrapMetadata()
 
-        logger.info(
-            TAG,
-            "Device bootstrap succeeded; " +
-                "presenceState=${bootstrap.presenceState.name}"
-        )
+        val deviceId = deviceRegistrationResolver.resolveOrRegister(metadata)
+            .getOrElse { exception ->
+                logFailure("Device resolution failed", exception)
+                return Result.failure(exception)
+            }
 
-        val sessionBootstrap = sessionBootstrapLoader.loadSessionBootstrap(
-            request.toSessionBootstrapMetadata()
-        ).getOrElse { exception ->
-            logFailure("Session bootstrap failed", exception)
-            return Result.failure(exception)
-        }
+        logger.info(TAG, "Registered device resolved for startup")
+
+        val sessionBootstrap = sessionBootstrapLoader.loadSessionBootstrap(metadata)
+            .getOrElse { exception ->
+                logFailure("Session bootstrap failed", exception)
+                return Result.failure(exception)
+            }
 
         logger.info(
             TAG,
@@ -139,7 +130,7 @@ class BootstrapStartupCoordinator(
 
         return Result.success(
             BootstrapStartupSnapshot(
-                bootstrap = bootstrap,
+                deviceId = deviceId,
                 sessionBootstrap = sessionBootstrap,
                 roomSession = roomSession,
                 presence = presence

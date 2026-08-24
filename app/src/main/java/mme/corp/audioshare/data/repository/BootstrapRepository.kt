@@ -2,8 +2,6 @@ package mme.corp.audioshare.data.repository
 
 import kotlinx.coroutines.CancellationException
 import mme.corp.audioshare.data.api.BootstrapApi
-import mme.corp.audioshare.data.dto.bootstrap.BootstrapRequest
-import mme.corp.audioshare.data.dto.bootstrap.BootstrapResponse
 import mme.corp.audioshare.data.dto.bootstrap.Platform
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapRequest
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
@@ -12,16 +10,6 @@ import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.exception.DeviceBootstrapRequiredException
 import mme.corp.audioshare.logging.AppLogger
 import mme.corp.audioshare.network.retrofit.executeApiCall
-
-interface DeviceBootstrapper {
-
-    suspend fun bootstrap(
-        displayName: String?,
-        deviceName: String?,
-        appVersion: String?,
-        platform: Platform = Platform.ANDROID
-    ): Result<BootstrapResponse>
-}
 
 data class SessionBootstrapMetadata(
     val displayName: String? = null,
@@ -47,49 +35,7 @@ class BootstrapRepository(
     private val bootstrapApi: BootstrapApi,
     private val deviceIdStore: DeviceIdStore,
     private val logger: AppLogger = AppLogger.NO_OP
-) : DeviceBootstrapper, SessionBootstrapLoader {
-
-    override suspend fun bootstrap(
-        displayName: String?,
-        deviceName: String?,
-        appVersion: String?,
-        platform: Platform
-    ): Result<BootstrapResponse> {
-        val existingDeviceId = readDeviceId().getOrElse { exception ->
-            logFailure("Device bootstrap device lookup failed", exception)
-            return Result.failure(exception)
-        }
-
-        val result = executeApiCall(
-            emptyBodyMessage = "Bootstrap response body is empty"
-        ) {
-            bootstrapApi.bootstrap(
-                BootstrapRequest(
-                    deviceId = existingDeviceId,
-                    displayName = displayName,
-                    deviceName = deviceName,
-                    platform = platform,
-                    appVersion = appVersion
-                )
-            )
-        }
-
-        val response = result.getOrElse { exception ->
-            logFailure("Device bootstrap failed", exception)
-            return Result.failure(exception)
-        }
-
-        return try {
-            deviceIdStore.saveDeviceId(response.deviceId)
-            logger.debug(TAG, "Device bootstrap response persisted")
-            Result.success(response)
-        } catch (exception: CancellationException) {
-            throw exception
-        } catch (exception: Exception) {
-            logFailure("Device bootstrap persistence failed", exception)
-            Result.failure(exception)
-        }
-    }
+) : SessionBootstrapLoader {
 
     override suspend fun loadSessionBootstrap(
         metadata: SessionBootstrapMetadata

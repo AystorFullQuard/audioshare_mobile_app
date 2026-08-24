@@ -33,12 +33,12 @@ Do not combine compatibility work with unrelated cleanup or new product features
   - Legacy `device_id` migration.
   - Explicit current-user device invalidation support.
 
-- [ ] 🟡 **AS-COMPAT-02 — Current session-bootstrap contract**
+- ✅ **AS-COMPAT-02 — Current session-bootstrap contract**
   - Align Android request with current `/api/v1/session/bootstrap`.
   - Add current device metadata fields.
   - Test against a full ServeRelay-shaped bootstrap response.
 
-- [ ] ⬜ **AS-COMPAT-03 — Startup cutover**
+- ✅ **AS-COMPAT-03 — Startup cutover**
   - Resolve/register device before session bootstrap.
   - Remove production use of legacy `/api/v1/bootstrap`.
   - Preserve startup order: device → session bootstrap → room restore → heartbeat.
@@ -90,6 +90,16 @@ git status --short
 
 ```bat
 gradlew.bat :app:testDebugUnitTest --tests "mme.corp.audioshare.data.repository.BootstrapRepositoryTest" --tests "mme.corp.audioshare.startup.BootstrapStartupCoordinatorTest" --rerun-tasks --console=plain
+gradlew.bat :app:testDebugUnitTest --rerun-tasks --console=plain
+gradlew.bat :app:lintDebug :app:assembleDebug --rerun-tasks --console=plain
+git diff --check
+git status --short
+```
+
+## AS-COMPAT-03 gate
+
+```bat
+gradlew.bat :app:testDebugUnitTest --tests "mme.corp.audioshare.startup.DeviceRegistrationCoordinatorTest" --tests "mme.corp.audioshare.startup.BootstrapStartupCoordinatorTest" --tests "mme.corp.audioshare.data.repository.BootstrapRepositoryTest" --rerun-tasks --console=plain
 gradlew.bat :app:testDebugUnitTest --rerun-tasks --console=plain
 gradlew.bat :app:lintDebug :app:assembleDebug --rerun-tasks --console=plain
 git diff --check
