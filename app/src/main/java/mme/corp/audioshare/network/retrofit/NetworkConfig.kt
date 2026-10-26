@@ -1,5 +1,13 @@
 package mme.corp.audioshare.network.retrofit
 
+import mme.corp.audioshare.BuildConfig
+
+/** A single immutable endpoint choice for the current build variant. */
 object NetworkConfig {
-    const val BASE_URL = "http://192.168.100.4:8090/" // <-- aici merge IPv4 Address
+    val BASE_URL: String by lazy {
+        ApiEndpointPolicy.approvedBaseUrl(
+            configuredUrl = BuildConfig.SERVERRELAY_BASE_URL,
+            isDebug = BuildConfig.DEBUG
+        )
+    }
 }

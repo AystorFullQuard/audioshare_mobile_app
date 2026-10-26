@@ -3,6 +3,22 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Gradle properties are non-secret endpoint configuration; do not put credentials here.
+// Debug defaults to the Android emulator's host gateway (physical phones need -P... override).
+val debugServerRelayUrl = providers.gradleProperty("serverRelayDebugBaseUrl")
+    .orElse("http://10.0.2.2:8090/").get()
+val releaseServerRelayUrl = providers.gradleProperty("serverRelayReleaseBaseUrl")
+    .orElse("").get()
+
+fun buildConfigString(value: String): String = "\"" +
+        value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+if (releaseServerRelayUrl.isNotEmpty()) {
+    require(releaseServerRelayUrl.startsWith("https://", ignoreCase = true)) {
+        "serverRelayReleaseBaseUrl must use HTTPS"
+    }
+}
+
 android {
     namespace = "mme.corp.audioshare"
     compileSdk {
@@ -23,6 +39,7 @@ android {
 
     buildTypes {
         getByName("debug") {
+            buildConfigField("String", "SERVERRELAY_BASE_URL", buildConfigString(debugServerRelayUrl))
             buildConfigField(
                 "long",
                 "PRESENCE_HEARTBEAT_INTERVAL_MILLIS",
@@ -40,6 +57,7 @@ android {
             )
         }
         release {
+            buildConfigField("String", "SERVERRELAY_BASE_URL", buildConfigString(releaseServerRelayUrl))
             isMinifyEnabled = false
             buildConfigField(
                 "long",
@@ -104,7 +122,6 @@ dependencies {
     implementation(libs.retrofit.gson)
 
     implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
 
 // JSON
     implementation(libs.gson)
@@ -114,4 +131,15 @@ dependencies {
 
 // ViewModel
     implementation(libs.androidx.lifecycle.viewmodel)
+}
+// A release artifact must never ship with an empty, unreviewed API origin.
+// Keep normal debug builds and IDE sync independent of production hosting decisions.
+tasks.configureEach {
+    if (name == "preReleaseBuild") {
+        doFirst {
+            check(releaseServerRelayUrl.isNotBlank()) {
+                "Set -PserverRelayReleaseBaseUrl=https://your-server/ before building release"
+            }
+        }
+    }
 }

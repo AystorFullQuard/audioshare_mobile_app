@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: allow local Docker Compose testing over LAN HTTP.
+     ApiEndpointPolicy independently rejects public-Internet HTTP destinations.
+     NEVER include this resource in release variants. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
