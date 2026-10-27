@@ -47,6 +47,7 @@ class DeviceRegistrationCoordinatorTest {
         assertEquals(DEVICE_ID, store.storedDeviceId)
         assertEquals(
             RegisterDeviceRequest(
+                installationId = store.storedInstallationId,
                 deviceName = "Pixel 10 Pro",
                 platform = Platform.ANDROID,
                 appVersion = "1.0.0",
@@ -107,6 +108,19 @@ class DeviceRegistrationCoordinatorTest {
     }
 
     @Test
+    fun registrationRecoveryReusesSameInstallationId() = runTest {
+        val api = RecordingDevicesApi()
+        val store = FakeDeviceIdStore()
+        val coordinator = coordinator(api, store)
+        coordinator.resolveOrRegister(metadata()).getOrThrow()
+        val originalInstallationId = api.lastRequest!!.installationId
+        coordinator.recoverRegistration(metadata()).getOrThrow()
+        assertEquals(originalInstallationId, api.lastRequest!!.installationId)
+        assertEquals(store.storedInstallationId, originalInstallationId)
+        assertEquals(2, api.requestCount)
+    }
+
+    @Test
     fun failedRecoveryRegistrationLeavesStaleDeviceInvalidated() = runTest {
         val expected = IllegalStateException("registration failed")
         val api = RecordingDevicesApi(failure = expected)
@@ -140,7 +154,8 @@ class DeviceRegistrationCoordinatorTest {
         store: FakeDeviceIdStore
     ) = DeviceRegistrationCoordinator(
         deviceRepository = DeviceRepository(api),
-        deviceIdStore = store
+        deviceIdStore = store,
+        installationIdStore = store
     )
 
     private class RecordingDevicesApi(

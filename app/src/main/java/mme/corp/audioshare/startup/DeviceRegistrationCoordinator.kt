@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import mme.corp.audioshare.data.repository.DeviceRepository
 import mme.corp.audioshare.data.repository.SessionBootstrapMetadata
 import mme.corp.audioshare.data.storage.DeviceIdStore
+import mme.corp.audioshare.data.storage.InstallationIdStore
 import mme.corp.audioshare.logging.AppLogger
 
 interface DeviceRegistrationResolver {
@@ -19,6 +20,7 @@ interface DeviceRegistrationResolver {
 class DeviceRegistrationCoordinator(
     private val deviceRepository: DeviceRepository,
     private val deviceIdStore: DeviceIdStore,
+    private val installationIdStore: InstallationIdStore,
     private val logger: AppLogger = AppLogger.NO_OP
 ) : DeviceRegistrationResolver {
 
@@ -62,7 +64,17 @@ class DeviceRegistrationCoordinator(
     private suspend fun registerAndPersist(
         metadata: SessionBootstrapMetadata
     ): Result<String> {
+        val installationId = try {
+            installationIdStore.getOrCreateInstallationId()
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            logFailure("Installation identity lookup failed", exception)
+            return Result.failure(exception)
+        }
+
         val registeredDevice = deviceRepository.registerDevice(
+            installationId = installationId,
             deviceName = metadata.deviceName.orEmpty(),
             manufacturer = metadata.manufacturer.orEmpty(),
             model = metadata.model.orEmpty(),

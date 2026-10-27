@@ -39,6 +39,7 @@ class DeviceRepositoryTest {
         val repository = repository()
 
         val result = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = " Pixel 10 Pro ",
             manufacturer = " Google ",
             model = " Pixel 10 Pro ",
@@ -59,9 +60,10 @@ class DeviceRepositoryTest {
 
         val request = server.takeRequest()
         assertEquals("POST", request.method)
-        assertEquals("/api/v1/devices", request.path)
+        assertEquals("/api/v1/devices/register", request.path)
 
         val body = JsonParser.parseString(request.body.readUtf8()).asJsonObject
+        assertEquals(INSTALLATION_ID, body["installationId"].asString)
         assertEquals("Pixel 10 Pro", body["deviceName"].asString)
         assertEquals("ANDROID", body["platform"].asString)
         assertEquals("1.0.0", body["appVersion"].asString)
@@ -76,6 +78,7 @@ class DeviceRepositoryTest {
         val repository = repository()
 
         val result = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "Pixel 10 Pro",
             manufacturer = "Google",
             model = "Pixel 10 Pro",
@@ -98,16 +101,19 @@ class DeviceRepositoryTest {
         val repository = repository()
 
         val blankDeviceName = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "   ",
             manufacturer = "Google",
             model = "Pixel 10 Pro"
         )
         val blankManufacturer = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "Pixel 10 Pro",
             manufacturer = "   ",
             model = "Pixel 10 Pro"
         )
         val blankModel = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "Pixel 10 Pro",
             manufacturer = "Google",
             model = "   "
@@ -116,6 +122,25 @@ class DeviceRepositoryTest {
         assertTrue(blankDeviceName.exceptionOrNull() is IllegalArgumentException)
         assertTrue(blankManufacturer.exceptionOrNull() is IllegalArgumentException)
         assertTrue(blankModel.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun installationIdIsRequiredAndBoundedBeforeNetworkCall() = runTest {
+        val repository = repository()
+        assertTrue(
+            repository.registerDevice(
+                installationId = " ", deviceName = "Pixel", manufacturer = "Google", model = "Pixel"
+            ).isFailure
+        )
+        assertTrue(
+            repository.registerDevice(
+                installationId = "a".repeat(129),
+                deviceName = "Pixel",
+                manufacturer = "Google",
+                model = "Pixel"
+            ).isFailure
+        )
         assertEquals(0, server.requestCount)
     }
 
@@ -139,6 +164,7 @@ class DeviceRepositoryTest {
         val repository = repository()
 
         val result = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "Pixel 10 Pro",
             manufacturer = "Google",
             model = "Pixel 10 Pro"
@@ -159,6 +185,7 @@ class DeviceRepositoryTest {
         val repository = repository()
 
         val result = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "Pixel 10 Pro",
             manufacturer = "Google",
             model = "Pixel 10 Pro"
@@ -174,6 +201,7 @@ class DeviceRepositoryTest {
         val repository = repository()
 
         val result = repository.registerDevice(
+            installationId = INSTALLATION_ID,
             deviceName = "Pixel 10 Pro",
             manufacturer = "Google",
             model = "Pixel 10 Pro"
@@ -191,6 +219,7 @@ class DeviceRepositoryTest {
 
         try {
             repository.registerDevice(
+                installationId = INSTALLATION_ID,
                 deviceName = "Pixel 10 Pro",
                 manufacturer = "Google",
                 model = "Pixel 10 Pro"
@@ -199,6 +228,10 @@ class DeviceRepositoryTest {
         } catch (actual: CancellationException) {
             assertSame(expected, actual)
         }
+    }
+
+    private companion object {
+        const val INSTALLATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     }
 
     private fun repository(): DeviceRepository {

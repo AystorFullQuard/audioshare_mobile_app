@@ -18,7 +18,7 @@ private val Context.dataStore by preferencesDataStore(name = "session")
 
 class SessionManager(
     private val context: Context
-) : DeviceIdStore, TokenStore {
+) : DeviceIdStore, InstallationIdStore, TokenStore {
 
     companion object {
 
@@ -155,7 +155,7 @@ class SessionManager(
                 Log.v(
                     TAG,
                     "DeviceId requested. UserExists=${!currentUserId.isNullOrBlank()}, " +
-                        "deviceExists=${!id.isNullOrBlank()}"
+                            "deviceExists=${!id.isNullOrBlank()}"
                 )
 
                 id
@@ -279,6 +279,16 @@ class SessionManager(
                 userId = preferences[USER_ID]
             )
         )
+    }
+
+    override suspend fun getOrCreateInstallationId(): String {
+        // Atomic edit prevents multiple concurrent startup calls from creating distinct ids.
+        // Never rotate this on logout, account changes, or registration recovery.
+        var installationId: String? = null
+        context.dataStore.edit { preferences ->
+            installationId = InstallationIdentityPreferences.getOrCreate(preferences)
+        }
+        return checkNotNull(installationId)
     }
 
     override suspend fun getDeviceId(): String? {

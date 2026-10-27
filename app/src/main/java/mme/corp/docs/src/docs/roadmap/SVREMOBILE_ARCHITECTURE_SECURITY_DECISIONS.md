@@ -2,9 +2,9 @@
 
 **Record ID:** `ADR-MOBILE-2026-10-26-01`  
 **Status:** Product requirements **accepted by project owner** on 26 October 2026 (Q01–Q08, R01–R04); detailed implementation and security design **not yet accepted**.  
-**Original contract analysis baseline:** 26 Oct 2026, 13:07 EET archives. **Current mobile source:** 26 Oct 2026, 14:23 EET (`bdda9f3` HEAD + working tree).  
-**Change type:** decision record preserved; GAP-00 now establishes central network policy in mobile code, without changing server contracts or offline trust policy.  
-**Links:** [roadmap](SVREMOBILE_ROADMAP.md) · [product gates](SVREMOBILE_PRE_IMPLEMENTATION_DECISIONS.md) · [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [static contract gaps](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md).
+**Current implementation:** 27 Oct mobile source; GAP-00 shared network policy, GAP-01 backend registration route and GAP-02 persisted per-installation ID; JVM/device acceptance pending.  
+**Boundary:** Server-issued `deviceId` remains user-scoped; generated `installationId` is stable per app installation, and neither is an offline authorization grant.  
+**Links:** [roadmap](SVREMOBILE_ROADMAP.md) · [dependency table](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [integration gaps](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md).
 
 ## Accepted scope and invariants
 
@@ -56,4 +56,4 @@ Media idle mode should not retain active capture locks or continuous discovery; 
 - **MEDIA-01:** secure codec/transport choice and measured latency, jitter, thermal and battery budgets; secure guest media-key handling.
 - **CLOUD-01:** later production hosting provider, staging URL and Play Console publication gates; **remote cross-Internet calling stays explicitly outside v1**.
 
-**Status discipline:** owner product decisions are not code acceptance; `ANL-00..02` stay ✅ (4 of 103 steps (including GAP-20 product scope)). GAP-00 code is 🟡 pending Android Gradle tests and device verification. No live server/Android test claims.
+**Status discipline:** owner product decisions are not code acceptance; `ANL-00..02` stay ✅ (4 of 104 steps (including GAP-20 product scope)). GAP-00/01/02 and GAP-22 code are 🟡 pending Android Gradle tests and device verification. No live server/Android test claims.

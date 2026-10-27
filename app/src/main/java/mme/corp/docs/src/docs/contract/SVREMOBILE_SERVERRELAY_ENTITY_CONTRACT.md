@@ -1,6 +1,6 @@
 # ServerRelay boot/entity → SvReMobile entity contract (27 Oct 2026)
 
-**Purpose:** First entity-only foundation. Source: supplied ServerRelay 26 Oct `boot/src/main/java/sv/re/entity/*.java` and public contracts in `dto/src/main/java/sv/re/dto/`; target: supplied SvReMobile 27 Oct. **No endpoint wiring or runtime behavior changed.**
+**Purpose:** First entity-only foundation. Source: supplied ServerRelay 26 Oct `boot/src/main/java/sv/re/entity/*.java` and public contracts in `dto/src/main/java/sv/re/dto/`; target: supplied SvReMobile 27 Oct. **Entity-only foundation originally.** Subsequent GAP-01/02 work updated registration endpoint/DTO/coordinator, not entity snapshots.
 
 The new `app/src/main/java/mme/corp/audioshare/data/entity/` contains immutable Kotlin application snapshots. These are **not** Android Room database annotations, backend JPA replicas, API JSON DTOs, or adapters. Future DTO → entity mappers must be explicit, tested and added in their own GAP stage; existing `data/model/room/Room` stays in use until then.
 
@@ -27,11 +27,11 @@ The new `app/src/main/java/mme/corp/audioshare/data/entity/` contains immutable 
 - **Offline:** neither a `UserEntity` nor `AuthSessionEntity` is a trusted offline grant or proof of live backend authorization. Dedicated device-bound security design remains GAP-15/16.
 - **Memory:** immutable small metadata objects; no JPA graphs, contexts, socket references, credentials, raw audio buffers or media session state are held here. This avoids reference cycles, but does not itself prove zero leaks.
 
-## Known endpoint/DTO mismatches — intentionally NOT changed in entity-only milestone
+## Endpoint / DTO readiness after the entity milestone
 
 | Existing mobile DTO/contract | 26 Oct ServerRelay contract | Future GAP |
 |---|---|---|
-| Mobile register device request omits `installationId` and device response assumes `deviceId/userId` shape | `RegisterDeviceRq` requires `installationId`; server returns user-facing `UserDevice` with `id` | GAP-01–03 |
+| Registration request now includes stable per-install `installationId` and server response maps `deviceId/userId`; backend E2E pending | `RegisterDeviceRq` requires `installationId`; `DevicesController` returns `DeviceResult` with `deviceId`/`userId` | GAP-01/02 🟡 |
 | Mobile bootstrap request uses `deviceId`, manufacturer/model/platform fields and response contains rooms/presence only | `SessionBootstrapRq` requires `installationId`; `SessionBootstrapRs` contains `session,user,configuration,capabilities,devices,rooms,presence,server` | GAP-04 |
 | Mobile `PresenceState` merges online/offline with in-room/streaming | `PresenceAvailability`, `PresenceActivity`, and `PresencePreference` are separate | GAP-05 |
 | Mobile login, refresh and CSRF paths/handling require E2E proof | Backend login/CSRF protection and session contracts are authoritative | GAP-06 |
@@ -39,5 +39,5 @@ The new `app/src/main/java/mme/corp/audioshare/data/entity/` contains immutable 
 ## Acceptance and verification
 
 - 🟡 GAP-22: Kotlin entity-source compilation completed (`kotlinc` 1.9.0, JVM); new JUnit entity contract tests authored but not executed with Android Gradle in this environment. Enum values checked against the backend source; full app and server integration are NOT verified.
-- ❌ Endpoint compatibility is NOT claimed; mappings and networking flows deliberately deferred.
+- 🟡 GAP-01/02 registration route and payload now align with backend source, but live authenticated API acceptance is not yet proven. Bootstrap, login/CSRF, and presence still require fixes.
 - Subsequent work may map DTOs into entities while keeping controllers, repositories and UI behavior stable through regression tests. No new runtime dependency is required for these entities.

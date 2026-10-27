@@ -1,9 +1,9 @@
 # SvReMobile — Android / ServerRelay integration roadmap
 
 **Source baseline:** SvReMobile archive supplied for **27 October 2026**, ServerRelay archive supplied for **26 October 2026**. The older 26 October 14:23 baseline statement is superseded. R01–R04 decisions remain accepted.
-**Current change (GAP-22):** mobile-only client-safe entity snapshots matching the backend `boot/entity` concepts; no controller, DTO, mapper, repository or HTTP changes. GAP-00 network foundation remains pending Android acceptance.
+**Current integration work (GAP-00–02):** shared endpoint policy (GAP-00), correct ServerRelay registration route and required stable installation ID (GAP-01/02). Source and contract tests updated; Gradle/Android/device acceptance pending.
 **Backend contract authority:** actual `ServerRelay/boot/src/main/java/sv/re/controller/`, `ServerRelay/dto/src/main/java/`, `ServerRelay/docs/src/main/docs/bootstrap/DEVICE_BOOTSTRAP_JOINT_CONTRACT_V1.md`, `security/SEC05_CSRF_CLIENT_CONTRACT.md`, and `realtime/` documents. **Do not use old mobile mock fixtures as proof of compatibility.**
-**Cross-references:** [gaps and architecture](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md), [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md), [owner decisions](SVREMOBILE_PRE_IMPLEMENTATION_DECISIONS.md), [architecture and security decision record](SVREMOBILE_ARCHITECTURE_SECURITY_DECISIONS.md), [student hosting/tools](SVREMOBILE_STUDENT_DEVELOPER_PACK.md), [entity contract](SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md).
+**Cross-references:** [integration GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [dependency table](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [architecture and security decisions](SVREMOBILE_ARCHITECTURE_SECURITY_DECISIONS.md) · [entity contract](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md).
 
 ## Status legend
 
@@ -18,11 +18,11 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 
 ## Overall completion
 
-**Verified planning/code-acceptance items:** `4/104` (3 ANL planning steps + GAP-20 product-scope decision; **0 integration implementation steps verified/accepted**; GAP-00 and GAP-22 implemented pending Android verification). The remaining security design tasks, implementation and physical-device gates are **not** complete.
+**Verified planning/code-acceptance items:** `4/104` (3 ANL planning steps + GAP-20 product-scope decision; **0 integration implementation steps verified/accepted**; GAP-00, GAP-01, GAP-02 and GAP-22 implemented pending Android verification). The remaining security design tasks, implementation and physical-device gates are **not** complete.
 
 | Stage | Status | Bar — verified steps | Priority / dependency |
 |---|---|---|---|
-| **GAP** — Cross-project integration blockers | 🟡 | `█░░░░░░░░░░░` 1/23 | P0 / GAP-22 entities then contract issues |
+| **GAP** — Cross-project integration blockers | 🟡 | `█░░░░░░░░░░░` 1/23 | P0 / registration, then auth/bootstrap acceptance |
 | **ANL** — Baseline and project understanding | ✅ | `████████████` 3/3 | Gate 0 product answers recorded; security design continues |
 | **ARCH** — Mobile architecture and ownership | 🟡 | `░░░░░░░░░░░░` 0/3 | Gate 0 / ANL |
 | **ENV** — Environments and network routing | ❌ | `░░░░░░░░░░░░` 0/3 | P0 / SEC |
@@ -52,8 +52,9 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 |---|---|---|---|
 | **GAP-22** — safe mobile entity snapshots | **Implemented; verify** | GAP-06 auth DTOs; DEV/BOOT DTO alignment; offline design | Android Gradle tests; mapping/E2E validation later |
 | **GAP-00 / ENV / SEC** shared network safety | **Implemented; verify** | Docs, tests, logging audit | Gradle tests, production TLS setup |
+| **GAP-01/02 / DEV** device registration + install identity | **Implemented; verify** | GAP-06 auth, GAP-03 bootstrap DTO | Gradle/JUnit + Docker authenticated registration; server-issued ID/session binding |
 | **GAP-06 / AUTH** CSRF/login/refresh | **Yes** | Device DTO work, offline threat model | Server CSRF policy + Docker E2E acceptance |
-| **GAP-01..04 / DEV / BOOT** installation + bootstrap | **Yes, contract work** | CSRF, security, tests | Auth login to validate E2E |
+| **GAP-03/04 / BOOT** bootstrap request/response | **Yes, contract work** | CSRF, security, tests | Auth login to validate E2E |
 | **GAP-05 / PRES / ROOM** presence model | **Yes** | DEV/BOOT DTOs, OBS/PERF | Bootstrap for end-to-end proof |
 | **GAP-09..10 / INV / CALL / RT** | **Design/interfaces now** | Offline pairing/security | AUTH + DEV + BOOT + ROOM accepted |
 | **GAP-11,15..18 / OFF / AUD / SYNC** | **Threat model/prototype now** | Online contract work, perf baselines | Approved grant, pairing and crypto design |
@@ -76,7 +77,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 ### GAP — Integration blockers (`█░░░░░░░░░░░` 1/23)
 
-**GAP-00 🟡** network foundation · **GAP-22 🟡** entity models compiled locally, Android test pending · **GAP-01–19/21** open · **GAP-20 ✅** v1 scope decision. [GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md).
+**GAP-00 🟡** network policy · **GAP-01 🟡** registration route · **GAP-02 🟡** installation identity · **GAP-22 🟡** entity models · **GAP-03–19/21** open · **GAP-20 ✅** scope accepted. [GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md).
 
 
 ### ANL — Baseline and project understanding  (`████████████` 3/3)
@@ -115,7 +116,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 ### DEV — Installation and device binding  (`░░░░░░░░░░░░` 0/3)
 
-- ❌ **DEV-00** — Device registration path /register and required installationId must match backend contract.
+- 🟡 **DEV-00** — `/api/v1/devices/register` and stable `installationId` match backend request; Android/Docker contract tests pending.
 - ⬜ **DEV-01** — Persistent per-installation identity vs server deviceId separation, restore/reinstall/account-switch policy.
 - ⬜ **DEV-02** — Register/bind, refresh continuity, unlink/revoke, device-limit errors and migration accepted.
 

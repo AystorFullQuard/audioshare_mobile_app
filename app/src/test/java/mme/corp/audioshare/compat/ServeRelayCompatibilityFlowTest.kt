@@ -256,7 +256,8 @@ class ServeRelayCompatibilityFlowTest {
             deviceStore = deviceStore,
             deviceRegistration = DeviceRegistrationCoordinator(
                 deviceRepository = deviceRepository,
-                deviceIdStore = deviceStore
+                deviceIdStore = deviceStore,
+                installationIdStore = deviceStore
             ),
             bootstrap = BootstrapRepository(
                 bootstrapApi = retrofit.create(BootstrapApi::class.java),
@@ -308,18 +309,19 @@ class ServeRelayCompatibilityFlowTest {
         assertSimpleAuthenticatedRequest(
             request = request,
             method = "POST",
-            path = "/api/v1/devices",
+            path = "/api/v1/devices/register",
             token = token
         )
 
         val body = request.jsonBody()
+        assertTrue(body["installationId"].asString.isNotBlank())
         assertEquals(deviceName, body["deviceName"].asString)
         assertEquals("ANDROID", body["platform"].asString)
         assertEquals(APP_VERSION, body["appVersion"].asString)
         assertEquals(MANUFACTURER, body["manufacturer"].asString)
         assertEquals(deviceName, body["model"].asString)
         assertEquals(PLATFORM_VERSION, body["platformVersion"].asString)
-        assertEquals(6, body.size())
+        assertEquals(7, body.size())
     }
 
     private fun assertSessionBootstrapRequest(
@@ -494,13 +496,15 @@ class ServeRelayCompatibilityFlowTest {
             jsonResponse(
                 body = """
                     [
-                      ${roomMemberJson(
-                          membershipId = OWNER_MEMBERSHIP_ID,
-                          userId = OWNER_USER_ID,
-                          username = "owner-user",
-                          displayName = "Owner User",
-                          role = "OWNER"
-                      )}$memberJson
+                      ${
+                    roomMemberJson(
+                        membershipId = OWNER_MEMBERSHIP_ID,
+                        userId = OWNER_USER_ID,
+                        username = "owner-user",
+                        displayName = "Owner User",
+                        role = "OWNER"
+                    )
+                }$memberJson
                     ]
                 """.trimIndent()
             )

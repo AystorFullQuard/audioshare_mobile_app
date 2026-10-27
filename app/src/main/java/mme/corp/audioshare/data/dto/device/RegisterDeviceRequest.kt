@@ -3,6 +3,7 @@ package mme.corp.audioshare.data.dto.device
 import mme.corp.audioshare.data.dto.bootstrap.Platform
 
 data class RegisterDeviceRequest(
+    val installationId: String,
     val deviceName: String,
     val platform: Platform,
     val appVersion: String?,

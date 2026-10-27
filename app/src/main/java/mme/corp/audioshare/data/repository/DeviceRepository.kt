@@ -14,6 +14,7 @@ class DeviceRepository(
 ) {
 
     suspend fun registerDevice(
+        installationId: String,
         deviceName: String,
         manufacturer: String,
         model: String,
@@ -22,6 +23,7 @@ class DeviceRepository(
         platformVersion: String? = null
     ): Result<DeviceResponse> {
         val request = buildRegisterDeviceRequest(
+            installationId = installationId,
             deviceName = deviceName,
             manufacturer = manufacturer,
             model = model,
@@ -36,7 +38,7 @@ class DeviceRepository(
         logger.debug(
             TAG,
             "Device registration started; platform=${platform.name}, " +
-                "hasAppVersion=${request.appVersion != null}"
+                    "hasAppVersion=${request.appVersion != null}"
         )
 
         return executeApiCall(
@@ -69,7 +71,7 @@ class DeviceRepository(
             logger.warn(
                 TAG,
                 "Device registration failed; httpCode=${exception.httpCode}, " +
-                    "apiCode=${exception.apiError.code}"
+                        "apiCode=${exception.apiError.code}"
             )
         } else {
             logger.error(
@@ -81,6 +83,7 @@ class DeviceRepository(
     }
 
     private fun buildRegisterDeviceRequest(
+        installationId: String,
         deviceName: String,
         manufacturer: String,
         model: String,
@@ -95,8 +98,15 @@ class DeviceRepository(
         val normalizedModel = requireNotBlank(model, "Model")
             .getOrElse { return Result.failure(it) }
 
+        val normalizedInstallationId = requireNotBlank(installationId, "Installation id")
+            .getOrElse { return Result.failure(it) }
+        if (normalizedInstallationId.length > 128) {
+            return Result.failure(IllegalArgumentException("Installation id exceeds 128 characters"))
+        }
+
         return Result.success(
             RegisterDeviceRequest(
+                installationId = normalizedInstallationId,
                 deviceName = normalizedDeviceName,
                 platform = platform,
                 appVersion = appVersion.normalizedOptional(),

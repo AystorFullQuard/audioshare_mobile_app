@@ -122,6 +122,7 @@ class AppContainer(
         DeviceRegistrationCoordinator(
             deviceRepository = deviceRepository,
             deviceIdStore = sessionManager,
+            installationIdStore = sessionManager,
             logger = appLogger
         )
 

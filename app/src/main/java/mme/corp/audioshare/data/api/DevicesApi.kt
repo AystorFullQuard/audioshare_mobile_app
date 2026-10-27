@@ -8,7 +8,7 @@ import retrofit2.http.POST
 
 fun interface DevicesApi {
 
-    @POST("/api/v1/devices")
+    @POST("/api/v1/devices/register")
     suspend fun registerDevice(
         @Body request: RegisterDeviceRequest
     ): Response<DeviceResponse>
