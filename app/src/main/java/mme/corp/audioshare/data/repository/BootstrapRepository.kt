@@ -5,9 +5,8 @@ import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.dto.bootstrap.Platform
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapRequest
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
-import mme.corp.audioshare.data.storage.DeviceIdStore
+import mme.corp.audioshare.data.storage.InstallationIdStore
 import mme.corp.audioshare.exception.ApiException
-import mme.corp.audioshare.exception.DeviceBootstrapRequiredException
 import mme.corp.audioshare.logging.AppLogger
 import mme.corp.audioshare.network.retrofit.executeApiCall
 
@@ -33,25 +32,19 @@ fun interface SessionBootstrapLoader {
 
 class BootstrapRepository(
     private val bootstrapApi: BootstrapApi,
-    private val deviceIdStore: DeviceIdStore,
+    private val installationIdStore: InstallationIdStore,
     private val logger: AppLogger = AppLogger.NO_OP
 ) : SessionBootstrapLoader {
 
     override suspend fun loadSessionBootstrap(
         metadata: SessionBootstrapMetadata
     ): Result<SessionBootstrapResponse> {
-        val deviceId = readDeviceId().getOrElse { exception ->
-            logFailure("Session bootstrap device lookup failed", exception)
+        val installationId = readInstallationId().getOrElse { exception ->
+            logFailure("Session bootstrap installation lookup failed", exception)
             return Result.failure(exception)
-        }?.trim()?.takeIf(String::isNotEmpty)
-
-        if (deviceId == null) {
-            val exception = DeviceBootstrapRequiredException()
-            logFailure(
-                "Session bootstrap rejected before network call",
-                exception
-            )
-            return Result.failure(exception)
+        }
+        if (installationId.isBlank() || installationId.length > 128) {
+            return Result.failure(IllegalArgumentException("Invalid installation identity"))
         }
 
         logger.debug(TAG, "Session bootstrap started")
@@ -61,52 +54,68 @@ class BootstrapRepository(
         ) {
             bootstrapApi.sessionBootstrap(
                 SessionBootstrapRequest(
-                    deviceId = deviceId,
-                    displayName = metadata.displayName,
-                    deviceName = metadata.deviceName,
-                    manufacturer = metadata.manufacturer,
-                    model = metadata.model,
-                    platform = metadata.platform,
-                    platformVersion = metadata.platformVersion,
-                    appVersion = metadata.appVersion,
-                    locale = metadata.locale,
-                    timezone = metadata.timezone,
-                    capabilities = metadata.capabilities
+                    installationId = installationId,
+                    displayName = metadata.displayName.normalized(128),
+                    deviceName = metadata.deviceName.normalized(128),
+                    platformVersion = metadata.platformVersion.normalized(32),
+                    appVersion = metadata.appVersion.normalized(64),
+                    locale = metadata.locale.normalized(32),
+                    timezone = metadata.timezone.normalized(64),
+                    capabilities = metadata.capabilities?.map { capability ->
+                        require(capability.isNotBlank() && capability.length <= 64) {
+                            "Invalid bootstrap capability"
+                        }
+                        capability
+                    }?.also { require(it.size <= 64) { "Too many bootstrap capabilities" } }
                 )
             )
+        }.mapCatching { response ->
+            check(response.session?.authenticated == true && response.session?.needsLogin == false) {
+                "Bootstrap did not return an authenticated session"
+            }
+            check(!response.user?.id.isNullOrBlank()) {
+                "Bootstrap user is missing"
+            }
+            check(response.presence?.userId == response.user?.id) {
+                "Bootstrap presence user does not match session user"
+            }
+            check(response.devices.count { it.current && it.id.isNotBlank() } == 1) {
+                "Bootstrap current device is missing or ambiguous"
+            }
+            response
         }.onSuccess { response ->
             logger.info(
                 TAG,
                 "Session bootstrap succeeded; roomCount=${response.rooms.size}, " +
-                    "hasCurrentRoom=${response.presence?.currentRoomId != null}"
+                        "hasCurrentRoom=${response.presence?.currentRoomId != null}"
             )
         }.onFailure { exception ->
             logFailure("Session bootstrap failed", exception)
         }
     }
 
-    private suspend fun readDeviceId(): Result<String?> = try {
-        Result.success(deviceIdStore.getDeviceId())
+    private suspend fun readInstallationId(): Result<String> = try {
+        Result.success(installationIdStore.getOrCreateInstallationId())
     } catch (exception: CancellationException) {
         throw exception
     } catch (exception: Exception) {
         Result.failure(exception)
     }
 
+    private fun String?.normalized(maxLength: Int): String? =
+        this?.trim()?.takeIf { it.isNotEmpty() }?.also {
+            require(it.length <= maxLength) { "Bootstrap metadata exceeds server limit" }
+        }
+
     private fun logFailure(message: String, exception: Throwable) {
         if (exception is ApiException) {
             val summary = "$message; type=ApiException, " +
-                "httpCode=${exception.httpCode}, apiCode=${exception.apiError.code}"
+                    "httpCode=${exception.httpCode}, apiCode=${exception.apiError.code}"
             if (exception.httpCode >= 500) {
                 logger.error(TAG, summary)
             } else {
                 logger.warn(TAG, summary)
             }
-        } else if (exception is DeviceBootstrapRequiredException) {
-            logger.warn(
-                TAG,
-                "$message; type=DeviceBootstrapRequiredException"
-            )
         } else {
             logger.error(
                 TAG,

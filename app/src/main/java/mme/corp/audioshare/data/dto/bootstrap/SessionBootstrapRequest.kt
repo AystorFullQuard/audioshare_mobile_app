@@ -1,12 +1,10 @@
 package mme.corp.audioshare.data.dto.bootstrap
 
+/** Matches ServerRelay SessionBootstrapRq. The backend binds the session via registration. */
 data class SessionBootstrapRequest(
-    val deviceId: String,
+    val installationId: String,
     val displayName: String? = null,
     val deviceName: String? = null,
-    val manufacturer: String? = null,
-    val model: String? = null,
-    val platform: Platform = Platform.ANDROID,
     val platformVersion: String? = null,
     val appVersion: String? = null,
     val locale: String? = null,

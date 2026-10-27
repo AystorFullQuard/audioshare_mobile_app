@@ -3,12 +3,14 @@
 **Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
 
 ```text
-GAP 🟡 1/23 scope/status items closed; GAP-00/01/02/22 implemented, Android acceptance pending
+GAP 🟡 1/23 scope/status items closed; GAP-00..04/22 implemented, Android acceptance pending
 ├─ GAP-00 🟡 central endpoint policy; Gradle/Android verification pending
 ├─ GAP-01 🟡 /devices/register path + request/response test fixture
 ├─ GAP-02 🟡 installation ID + logout/recovery persistence + backup exclusions
+├─ GAP-03 🟡 bootstrap installationId, exact server request fields
+├─ GAP-04 🟡 bootstrap response session/user/config/devices/presence fields
 ├─ GAP-22 🟡 client entity foundation compiled; Android verification/DTO mapping pending
-├─ GAP-03..19,21 🟡/❌/⬜ bootstrap/auth/security and testing remain open
+├─ GAP-05..19,21 🟡/❌/⬜ presence/auth/security and testing remain open
 └─ GAP-20 ✅ remote-internet media deferred (scope decision, not code)
 ANL ✅ static inventory + server contract gap register
 └─ ANL-02 ✅ Q01–Q08 + R01–R04 product decisions recorded (code still unimplemented)
@@ -17,7 +19,7 @@ ANL ✅ static inventory + server contract gap register
    │  │  └─ SEC-00 ❌ public auth CSRF proof missing
    │  │     └─ AUTH 🟡 align login / refresh / stored session
    │  │        └─ DEV-00 🟡 endpoint/installationId implemented; Docker auth proof pending
-   │  │           └─ BOOT-00 ❌ bootstrap installationId mismatch
+   │  │           └─ BOOT-00 🟡 bootstrap request/response aligned; live login and CSRF pending
    │  │              ├─ ROOM 🟡 → INV ⬜ → CALL ⬜
    │  │              ├─ PRES ❌ → realtime-backed member updates
    │  │              └─ RT ⬜ → WebSocket auth, subscriptions, reconnect
@@ -43,7 +45,7 @@ ANL ✅ static inventory + server contract gap register
 | GAP-00 — network/config foundation | Implemented, verification pending | LOG/SEC audit, TEST, docs | Android Gradle tests, production HTTPS URL |
 | GAP-01/02 — registration + installation ID | Implemented, verify | GAP-06 auth; GAP-03 bootstrap | Gradle tests + backend 201/session-binding |
 | GAP-06 — CSRF/auth sessions | Yes | GAP-03/04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
-| GAP-03/04 — bootstrap | Yes, contract design | GAP-06 implementation, tests | Auth for successful E2E bootstrap |
+| GAP-03/04 — bootstrap | Implemented; verify | GAP-06 implementation, tests | Real backend authenticated E2E + Android tests |
 | GAP-05 — presence model | Yes | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
 | GAP-09..10 — Invite/Call/Realtime | Interface work now | OFF transport experiments | Working auth/device/room control plane |
 | GAP-11,15..18 — offline media and sync | Threat model/prototype now | Backend GAP workstreams, PERF | Offline grant, key agreement and pairing designs |
@@ -57,7 +59,7 @@ The dependency matrix permits independent development, **not** premature complet
 |---|---|---|---|
 | **0 — Product/security** | Q01–Q08 and R01–R04 accepted: prior-login host, LAN-only v1, background audio where legal, 1:1 then host+2/guest sharing. Phone models deferred; complete SEC threat model before media coding. | ✅ owner decision register; 🟡 security design/threat model | 🟡 |
 | **1 — Infrastructure/auth** | HTTPS/WSS or approved debug-only LAN exception, CSRF, token storage/session cleanup. | Real login/refresh/logout against matching ServerRelay build. | ❌ |
-| **2 — Bind & bootstrap** | `installationId` and `/devices/register` implemented; `/session/bootstrap` still wrong shape. | Validated new install→auth→bind→bootstrap and token rotation/revocation. | ❌ |
+| **2 — Bind & bootstrap** | `installationId` and `/devices/register` implemented; `/session/bootstrap` request and response now mapped; not live verified. | Validated new install→auth→bind→bootstrap and token rotation/revocation. | ❌ |
 | **3 — Online features** | Rooms, Presence, Invite, CallSession and WSS event/reconnect. | Verified two-phone room and control-plane lifecycle. | 🟡 |
 | **4 — Offline media** | Trusted peers, independent local control, hotspot/airplane, media keys, camera-ready A/V architecture and reconnect. | Three-phone no-internet audio, local trust & cloud return validation, with video capability tracked separately. | 🟡 |
 | **5 — Ship** | Stable power/memory/disk/privacy, video gates, CI and Play Console internal/closed-to-prod rollout. | Owner-accepted Android release and backend compatibility record. | ⬜ |

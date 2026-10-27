@@ -13,6 +13,9 @@ import kotlinx.coroutines.test.runTest
 import mme.corp.audioshare.data.dto.bootstrap.RoomSummaryResponse
 import mme.corp.audioshare.data.dto.bootstrap.SessionBootstrapResponse
 import mme.corp.audioshare.data.dto.bootstrap.SessionPresenceResponse
+import mme.corp.audioshare.data.entity.PresenceAvailability
+import mme.corp.audioshare.data.entity.PresenceActivity
+import mme.corp.audioshare.data.entity.PresencePreference
 import mme.corp.audioshare.data.dto.presence.PresenceState
 import mme.corp.audioshare.data.dto.room.RoomMemberRole
 import mme.corp.audioshare.data.dto.room.RoomMemberState
@@ -895,20 +898,20 @@ class DefaultRoomSessionCoordinatorTest {
         assertTrue(
             logger.debugMessages.any {
                 it.contains("Room session operation started") &&
-                    it.contains("operation=CREATE")
+                        it.contains("operation=CREATE")
             }
         )
         assertTrue(
             logger.infoMessages.any {
                 it.contains("Room create membership committed") &&
-                    it.contains("roomId=created-room") &&
-                    it.contains("activeRoomChanged=false")
+                        it.contains("roomId=created-room") &&
+                        it.contains("activeRoomChanged=false")
             }
         )
         assertTrue(
             logger.allMessages().none {
                 it.contains("Desired Presence updated after room enter") ||
-                    it.contains("desiredPresence=IN_ROOM")
+                        it.contains("desiredPresence=IN_ROOM")
             }
         )
 
@@ -1100,14 +1103,14 @@ class DefaultRoomSessionCoordinatorTest {
         assertTrue(
             logger.debugMessages.any {
                 it.contains("Current room details refreshed") &&
-                    it.contains("roomId=room-1")
+                        it.contains("roomId=room-1")
             }
         )
         assertTrue(
             logger.debugMessages.any {
                 it.contains("Active room members refreshed") &&
-                    it.contains("roomId=room-1") &&
-                    it.contains("memberCount=1")
+                        it.contains("roomId=room-1") &&
+                        it.contains("memberCount=1")
             }
         )
     }
@@ -1307,11 +1310,9 @@ class DefaultRoomSessionCoordinatorTest {
                 ),
                 presence = SessionPresenceResponse(
                     userId = "user-1",
-                    state = if (currentRoomId == null) {
-                        PresenceState.ONLINE
-                    } else {
-                        PresenceState.IN_ROOM
-                    },
+                    availability = PresenceAvailability.ONLINE,
+                    activity = if (currentRoomId == null) PresenceActivity.NONE else PresenceActivity.IN_ROOM,
+                    preference = PresencePreference.AUTO,
                     currentRoomId = currentRoomId,
                     lastSeenAt = "2026-07-31T12:00:00"
                 )

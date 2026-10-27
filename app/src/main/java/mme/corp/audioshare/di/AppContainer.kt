@@ -62,7 +62,7 @@ class AppContainer(
 
     val bootstrapRepository = BootstrapRepository(
         bootstrapApi = bootstrapApi,
-        deviceIdStore = sessionManager,
+        installationIdStore = sessionManager,
         logger = appLogger
     )
 

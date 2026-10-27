@@ -9,6 +9,7 @@ import mme.corp.audioshare.data.api.PresenceApi
 import mme.corp.audioshare.data.api.RoomsApi
 import mme.corp.audioshare.data.dto.bootstrap.Platform
 import mme.corp.audioshare.data.dto.presence.PresenceState
+import mme.corp.audioshare.data.entity.PresenceAvailability
 import mme.corp.audioshare.data.dto.room.RoomMemberRole
 import mme.corp.audioshare.data.dto.room.RoomVisibility
 import mme.corp.audioshare.data.repository.BootstrapRepository
@@ -95,12 +96,12 @@ class ServeRelayCompatibilityFlowTest {
             .loadSessionBootstrap(metadata)
             .getOrThrow()
         assertTrue(bootstrap.rooms.isEmpty())
-        assertEquals(PresenceState.ONLINE, bootstrap.presence?.state)
+        assertEquals(PresenceAvailability.ONLINE, bootstrap.presence?.availability)
         assertNull(bootstrap.presence?.currentRoomId)
         assertSessionBootstrapRequest(
             request = server.takeRequest(),
             token = OWNER_ACCESS_TOKEN,
-            deviceId = OWNER_DEVICE_ID,
+            installationId = harness.deviceStore.storedInstallationId,
             deviceName = OWNER_DEVICE_NAME
         )
 
@@ -191,7 +192,7 @@ class ServeRelayCompatibilityFlowTest {
         assertSessionBootstrapRequest(
             request = server.takeRequest(),
             token = MEMBER_ACCESS_TOKEN,
-            deviceId = MEMBER_DEVICE_ID,
+            installationId = harness.deviceStore.storedInstallationId,
             deviceName = MEMBER_DEVICE_NAME
         )
 
@@ -261,7 +262,7 @@ class ServeRelayCompatibilityFlowTest {
             ),
             bootstrap = BootstrapRepository(
                 bootstrapApi = retrofit.create(BootstrapApi::class.java),
-                deviceIdStore = deviceStore
+                installationIdStore = deviceStore
             ),
             presence = PresenceRepository(
                 presenceApi = retrofit.create(PresenceApi::class.java),
@@ -327,7 +328,7 @@ class ServeRelayCompatibilityFlowTest {
     private fun assertSessionBootstrapRequest(
         request: RecordedRequest,
         token: String,
-        deviceId: String,
+        installationId: String,
         deviceName: String
     ) {
         assertSimpleAuthenticatedRequest(
@@ -338,12 +339,13 @@ class ServeRelayCompatibilityFlowTest {
         )
 
         val body = request.jsonBody()
-        assertEquals(deviceId, body["deviceId"].asString)
+        assertEquals(installationId, body["installationId"].asString)
+        assertFalse(body.has("deviceId"))
         assertEquals("Compatibility User", body["displayName"].asString)
         assertEquals(deviceName, body["deviceName"].asString)
-        assertEquals(MANUFACTURER, body["manufacturer"].asString)
-        assertEquals(deviceName, body["model"].asString)
-        assertEquals("ANDROID", body["platform"].asString)
+        assertFalse(body.has("manufacturer"))
+        assertFalse(body.has("model"))
+        assertFalse(body.has("platform"))
         assertEquals(PLATFORM_VERSION, body["platformVersion"].asString)
         assertEquals(APP_VERSION, body["appVersion"].asString)
         assertEquals(LOCALE, body["locale"].asString)
@@ -352,7 +354,7 @@ class ServeRelayCompatibilityFlowTest {
             listOf("rooms", "presence"),
             body["capabilities"].asJsonArray.map { it.asString }
         )
-        assertEquals(11, body.size())
+        assertEquals(8, body.size())
     }
 
     private fun assertHeartbeatRequest(
@@ -496,15 +498,13 @@ class ServeRelayCompatibilityFlowTest {
             jsonResponse(
                 body = """
                     [
-                      ${
-                    roomMemberJson(
-                        membershipId = OWNER_MEMBERSHIP_ID,
-                        userId = OWNER_USER_ID,
-                        username = "owner-user",
-                        displayName = "Owner User",
-                        role = "OWNER"
-                    )
-                }$memberJson
+                      ${roomMemberJson(
+                    membershipId = OWNER_MEMBERSHIP_ID,
+                    userId = OWNER_USER_ID,
+                    username = "owner-user",
+                    displayName = "Owner User",
+                    role = "OWNER"
+                )}$memberJson
                     ]
                 """.trimIndent()
             )
@@ -572,6 +572,7 @@ class ServeRelayCompatibilityFlowTest {
           "devices": [
             {
               "id": "$deviceId",
+              "current": true,
               "deviceName": "compat-device",
               "platform": "ANDROID",
               "appVersion": "$APP_VERSION",
@@ -581,7 +582,9 @@ class ServeRelayCompatibilityFlowTest {
           "rooms": [],
           "presence": {
             "userId": "$userId",
-            "state": "ONLINE",
+            "availability": "ONLINE",
+            "activity": "NONE",
+            "preference": "AUTO",
             "currentRoomId": null,
             "lastSeenAt": "$LOCAL_TIME",
             "updatedAt": "$LOCAL_TIME"

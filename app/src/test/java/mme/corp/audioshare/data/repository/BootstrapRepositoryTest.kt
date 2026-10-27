@@ -4,7 +4,9 @@ import com.google.gson.JsonParser
 import kotlinx.coroutines.test.runTest
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.dto.bootstrap.Platform
-import mme.corp.audioshare.data.dto.presence.PresenceState
+import mme.corp.audioshare.data.entity.PresenceActivity
+import mme.corp.audioshare.data.entity.PresenceAvailability
+import mme.corp.audioshare.data.entity.PresencePreference
 import mme.corp.audioshare.testutil.FakeDeviceIdStore
 import mme.corp.audioshare.testutil.retrofit
 import okhttp3.mockwebserver.MockResponse
@@ -52,6 +54,15 @@ class BootstrapRepositoryTest {
 
         assertTrue(result.isSuccess)
         val bootstrap = result.getOrThrow()
+        assertTrue(bootstrap.session?.authenticated == true)
+        assertEquals(USER_ID, bootstrap.user?.id)
+        assertEquals(DEVICE_ID, bootstrap.devices.single().id)
+        assertTrue(bootstrap.devices.single().current)
+        assertEquals(5, bootstrap.configuration?.heartbeatIntervalSeconds)
+        assertEquals(true, bootstrap.capabilities?.audio)
+        assertEquals(PresenceAvailability.ONLINE, bootstrap.presence?.availability)
+        assertEquals(PresenceActivity.IN_ROOM, bootstrap.presence?.activity)
+        assertEquals(PresencePreference.AUTO, bootstrap.presence?.preference)
         assertEquals(ROOM_ID, bootstrap.rooms.single().id)
         assertNull(bootstrap.rooms.single().name)
         assertEquals(ROOM_ID, bootstrap.presence?.currentRoomId)
@@ -61,12 +72,13 @@ class BootstrapRepositoryTest {
         assertEquals("/api/v1/session/bootstrap", request.path)
 
         val body = JsonParser.parseString(request.body.readUtf8()).asJsonObject
-        assertEquals(DEVICE_ID, body["deviceId"].asString)
+        assertEquals(INSTALLATION_ID, body["installationId"].asString)
+        assertEquals(false, body.has("deviceId"))
         assertEquals("Test User", body["displayName"].asString)
         assertEquals("Pixel 10 Pro", body["deviceName"].asString)
-        assertEquals("Google", body["manufacturer"].asString)
-        assertEquals("Pixel 10 Pro", body["model"].asString)
-        assertEquals("ANDROID", body["platform"].asString)
+        assertEquals(false, body.has("manufacturer"))
+        assertEquals(false, body.has("model"))
+        assertEquals(false, body.has("platform"))
         assertEquals("17", body["platformVersion"].asString)
         assertEquals("1.0.0", body["appVersion"].asString)
         assertEquals("en-US", body["locale"].asString)
@@ -78,15 +90,27 @@ class BootstrapRepositoryTest {
     }
 
     @Test
-    fun sessionBootstrapWithoutPersistedDeviceFailsBeforeNetworkCall() = runTest {
+    fun bootstrapUsesInstallationIdentityEvenWhenServerDeviceIdIsNotCached() = runTest {
+        server.enqueue(sessionBootstrapSuccessResponse())
         val repository = repository(FakeDeviceIdStore())
+        val result = repository.loadSessionBootstrap(SessionBootstrapMetadata())
+        assertTrue(result.isSuccess)
+        val body = JsonParser.parseString(server.takeRequest().body.readUtf8()).asJsonObject
+        assertEquals(INSTALLATION_ID, body["installationId"].asString)
+        assertEquals(false, body.has("deviceId"))
+    }
 
-        val result = repository.loadSessionBootstrap(
-            SessionBootstrapMetadata()
+    @Test
+    fun missingCurrentDeviceIsRejectedInsteadOfSilentlyStartingRuntime() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json")
+                .setBody("""{"session":{"authenticated":true,"needsLogin":false},
+                    "user":{"id":"$USER_ID"},"presence":{"userId":"$USER_ID"},
+                    "devices":[],"rooms":[]}""")
         )
-
-        assertTrue(result.isFailure)
-        assertEquals(0, server.requestCount)
+        val missingCurrent = repository(FakeDeviceIdStore())
+            .loadSessionBootstrap(SessionBootstrapMetadata())
+        assertTrue(missingCurrent.isFailure)
     }
 
     private fun repository(store: FakeDeviceIdStore): BootstrapRepository {
@@ -156,6 +180,7 @@ class BootstrapRepositoryTest {
               "devices": [
                 {
                   "id": "$DEVICE_ID",
+                  "current": true,
                   "deviceName": "Pixel 10 Pro",
                   "platform": "ANDROID",
                   "appVersion": "1.0.0",
@@ -179,7 +204,9 @@ class BootstrapRepositoryTest {
               ],
               "presence": {
                 "userId": "$USER_ID",
-                "state": "IN_ROOM",
+                "availability": "ONLINE",
+                "activity": "IN_ROOM",
+                "preference": "AUTO",
                 "currentRoomId": "$ROOM_ID",
                 "lastSeenAt": "2026-08-24T12:00:00",
                 "updatedAt": "2026-08-24T12:00:00"
@@ -199,6 +226,7 @@ class BootstrapRepositoryTest {
 
     private companion object {
         const val DEVICE_ID = "11111111-1111-1111-1111-111111111111"
+        const val INSTALLATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         const val USER_ID = "22222222-2222-2222-2222-222222222222"
         const val ROOM_ID = "33333333-3333-3333-3333-333333333333"
         const val OWNER_USER_ID = "44444444-4444-4444-4444-444444444444"

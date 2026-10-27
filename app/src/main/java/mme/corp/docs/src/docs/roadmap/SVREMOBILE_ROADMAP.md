@@ -18,7 +18,7 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 
 ## Overall completion
 
-**Verified planning/code-acceptance items:** `4/104` (3 ANL planning steps + GAP-20 product-scope decision; **0 integration implementation steps verified/accepted**; GAP-00, GAP-01, GAP-02 and GAP-22 implemented pending Android verification). The remaining security design tasks, implementation and physical-device gates are **not** complete.
+**Verified planning/code-acceptance items:** `4/104` (3 ANL planning steps + GAP-20 product-scope decision; **0 integration implementation steps accepted**; GAP-00..04 and GAP-22 implemented pending Android verification). The remaining security design tasks, implementation and physical-device gates are **not** complete.
 
 | Stage | Status | Bar — verified steps | Priority / dependency |
 |---|---|---|---|
@@ -52,9 +52,9 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 |---|---|---|---|
 | **GAP-22** — safe mobile entity snapshots | **Implemented; verify** | GAP-06 auth DTOs; DEV/BOOT DTO alignment; offline design | Android Gradle tests; mapping/E2E validation later |
 | **GAP-00 / ENV / SEC** shared network safety | **Implemented; verify** | Docs, tests, logging audit | Gradle tests, production TLS setup |
-| **GAP-01/02 / DEV** device registration + install identity | **Implemented; verify** | GAP-06 auth, GAP-03 bootstrap DTO | Gradle/JUnit + Docker authenticated registration; server-issued ID/session binding |
+| **GAP-01/02 / DEV** device registration + install identity | **Implemented; verify** | GAP-06 auth, GAP-03/04 bootstrap | Gradle/JUnit + Docker authenticated registration; current-session device binding |
 | **GAP-06 / AUTH** CSRF/login/refresh | **Yes** | Device DTO work, offline threat model | Server CSRF policy + Docker E2E acceptance |
-| **GAP-03/04 / BOOT** bootstrap request/response | **Yes, contract work** | CSRF, security, tests | Auth login to validate E2E |
+| **GAP-03/04 / BOOT** bootstrap request/response | **Implemented; verify** | GAP-06 CSRF, tests | Actual backend login→register→bootstrap E2E |
 | **GAP-05 / PRES / ROOM** presence model | **Yes** | DEV/BOOT DTOs, OBS/PERF | Bootstrap for end-to-end proof |
 | **GAP-09..10 / INV / CALL / RT** | **Design/interfaces now** | Offline pairing/security | AUTH + DEV + BOOT + ROOM accepted |
 | **GAP-11,15..18 / OFF / AUD / SYNC** | **Threat model/prototype now** | Online contract work, perf baselines | Approved grant, pairing and crypto design |
@@ -77,7 +77,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 ### GAP — Integration blockers (`█░░░░░░░░░░░` 1/23)
 
-**GAP-00 🟡** network policy · **GAP-01 🟡** registration route · **GAP-02 🟡** installation identity · **GAP-22 🟡** entity models · **GAP-03–19/21** open · **GAP-20 ✅** scope accepted. [GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md).
+**GAP-00 🟡** network policy · **GAP-01 🟡** registration route/session rebinding · **GAP-02 🟡** installation identity · **GAP-03 🟡** bootstrap request · **GAP-04 🟡** bootstrap response · **GAP-22 🟡** entities · **GAP-05–19/21** open · **GAP-20 ✅** scope accepted. [GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md).
 
 
 ### ANL — Baseline and project understanding  (`████████████` 3/3)
@@ -122,8 +122,8 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 ### BOOT — Session bootstrap  (`░░░░░░░░░░░░` 0/3)
 
-- ❌ **BOOT-00** — Replace legacy deviceId bootstrap input with required installationId; align remaining request metadata.
-- 🟡 **BOOT-01** — Startup coordinator and bootstrap repository exist; full server response and lifecycle not accepted.
+- 🟡 **BOOT-00** — `installationId` bootstrap request and allowed metadata implemented; Android and real backend verification pending.
+- 🟡 **BOOT-01** — Startup coordinator registers/binds current session; full bootstrap DTO and validation implemented, lifecycle/E2E acceptance pending.
 - ⬜ **BOOT-02** — Bootstrap parsing, recovery, restart, identity mismatches and server regression accepted.
 
 ### ROOM — Rooms and memberships  (`░░░░░░░░░░░░` 0/3)

@@ -1,6 +1,6 @@
 # SvReMobile ↔ ServerRelay — architecture and contract gap register
 
-**Review:** SvReMobile 27 Oct 2026 supplied source + ServerRelay 26 Oct source. GAP-00/01/02 code applied; JVM/Android and Docker acceptance pending. [Main roadmap](SVREMOBILE_ROADMAP.md).
+**Review:** SvReMobile 27 Oct 2026 supplied source + ServerRelay 26 Oct source. GAP-00..04 code applied; JVM/Android and Docker acceptance pending. [Main roadmap](SVREMOBILE_ROADMAP.md).
 
 ## Current architecture (observed, not assumed)
 
@@ -18,7 +18,7 @@
 
 **Still open:** `AuthRepository`, `SessionManager`, and `LoginViewModel` currently contain application-level logs of token fragments, IDs, username/password metadata and raw server error bodies. Removing the OkHttp BODY interceptor does **not** sanitize those logs. This requires an explicit `LOG/SEC` remediation with regression coverage.
 
-GAP-01 changes the Android registration endpoint only; GAP-02 adds client-generated `installationId`, not a backend API or media change.
+GAP-01 uses `/devices/register` and rebinds the current authenticated session on startup (the backend registration operation is idempotent). GAP-02 retains the installation identity separately from the server device UUID.
 
 **GAP stage count:** GAP-00 plus GAP-01..22 = 23 tracked items; only GAP-20 is ✅ (a scope decision, not implementation).
 
@@ -28,8 +28,8 @@ GAP-01 changes the Android registration endpoint only; GAP-02 adds client-genera
 |---|---|---|---|
 | **GAP-01 — device endpoint** 🟡 | `DevicesApi` now uses `POST /api/v1/devices/register` | `boot/.../controller/device/DevicesController.java`: `POST /api/v1/devices/register` | Route + JSON regression fixtures updated; live authenticated 201 and session binding still pending. |
 | **GAP-02 — installation identity** 🟡 | `InstallationIdStore` and atomic DataStore `installation_id`; distinct account-scoped `DeviceIdStore`; request carries stable ID | `dto/.../device/RegisterDeviceRq.java` requires `installationId`; frozen joint contract requires per-installation identity and session binding | Retained across logout/user changes/re-registration; changes on cleared data/reinstall. Backup/transfer excluded; Android acceptance pending. |
-| **GAP-03 — bootstrap request** ❌ | `SessionBootstrapRequest.kt` sends `deviceId` and fields `manufacturer/model/platform` | `dto/.../bootstrap/SessionBootstrapRq.java` requires `installationId`, optional display/device name, version, locale/timezone/capabilities; no `deviceId` | Client request lacks required installation ID; cannot assume extra fields are accepted forever. Frozen server bootstrap never registers a device. |
-| **GAP-04 — bootstrap response** 🟡 | `SessionBootstrapResponse.kt` stores only rooms + presence; `SessionPresenceResponse` expects `state` | `dto/.../bootstrap/SessionBootstrapRs.java`: session/user/configuration/capabilities/devices/rooms/presence/server; Presence uses availability/activity/preference | Nullable legacy response model discards control-plane state and may parse incorrect presence. Audit exact wire response. |
+| **GAP-03 — bootstrap request** 🟡 | `BootstrapRepository` sends the persistent `installationId` and precisely the allowed metadata fields; no `deviceId`, platform, manufacturer or model | `dto/.../bootstrap/SessionBootstrapRq.java` has `installationId` and metadata limits | Source and MockWebServer contract aligned; Android build + real backend verification pending. Register current session before bootstrap. |
+| **GAP-04 — bootstrap response** 🟡 | DTO models session (flags only, not secret tokens), user, configuration, capabilities, devices, rooms, presence and server. Presence has availability/activity/preference, not the legacy `state`. Repository validates authenticated user/current device. | `dto/.../bootstrap/SessionBootstrapRs.java`, `Presence.java`, `DeviceSummary.java` | Source and regression fixture aligned; real backend E2E/Android Gradle pending. |
 | **GAP-05 — Presence schema** ❌ | `PresenceHeartbeatRequest.kt` includes legacy `state`; response expects `state` enum | `PresenceHeartbeatRq`: `deviceId`; `PresenceHeartbeatRs`: `availability`, `activity`, `preference`, `currentRoomId`, time | Gson missing required `state` can cause invalid model behavior; explicit compatible mapping and regression needed. |
 | **GAP-06 — CSRF on public auth** ❌ | `AuthApi` exposes login/refresh; `ApiClient`/refresh client show no CSRF preparation/cookie + header pairing | `GET /api/v1/auth/csrf`, then `POST` login/register/refresh without bearer uses masked `X-XSRF-TOKEN` and `XSRF-TOKEN` cookie (SEC05_CSRF_CLIENT_CONTRACT) | Current authentication is not prepared for backend's protected public-auth POSTs; 403 on normal login/refresh. Add isolated no-bearer preparation path with atomic pair. |
 | **GAP-07 — insecure transport** 🟡 | **Original finding:** hardcoded `192.168.100.4`, global cleartext and debug `BODY`; **now partially mitigated** by GAP-00 release-safe network/config foundation | Server production transport requires HTTPS/WSS and proxy/TLS enforcement (`TRANSPORT_SECURITY_V1.md`) | Production token exposure and unsafe rollout; separate development-only exceptions, default TLS in release, redact all sensitive payloads. |
@@ -106,4 +106,4 @@ Android references: https://developer.android.com/develop/connectivity/wifi/loca
 
 ## GAP-22 — Mobile entity foundation (27 October 2026) 🟡
 
-Client-only `data/entity/` contains nine non-JPA entity snapshots and the ServerRelay-backed enum vocabulary; backend entities remain server-owned. Kotlin standalone compilation passed, while Android Gradle tests and real API mapping are not accepted. See [entity mapping](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md). Entity models are unchanged in GAP-00–02; registration transport/DTO/repository/coordinator have since been updated. Bootstrap, presence and CSRF remain open.
+Client-only `data/entity/` contains nine non-JPA entity snapshots and the ServerRelay-backed enum vocabulary; backend entities remain server-owned. Kotlin standalone compilation passed, while Android Gradle tests and real API mapping are not accepted. See [entity mapping](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md). Entity models are unchanged in GAP-00–02; registration transport/DTO/repository/coordinator have since been updated. Bootstrap request/response are implemented (acceptance pending). Heartbeat presence and CSRF remain open.
