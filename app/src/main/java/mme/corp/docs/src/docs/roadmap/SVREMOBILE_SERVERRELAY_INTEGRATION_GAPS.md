@@ -102,3 +102,8 @@ This is a **target responsibility diagram, not modules already present or a comm
 **Security invariant:** no recording of live media in the initial scope. Guest approval is scoped only to one-way audio share, is enforced by local host authority, and cannot be translated automatically into ServerRelay membership. Previous online authentication is a prerequisite for *offline hosting*, never perpetual cloud authorization. Backend `CallController` currently exposes a `CallSnapshot` lifecycle (`/api/v1/rooms/{roomId}/calls`, `/api/v1/calls/{callId}/*`); this does not in itself implement codec negotiation/video calling or offline guest signaling.
 
 Android references: https://developer.android.com/develop/connectivity/wifi/localonlyhotspot ; https://developer.android.com/develop/connectivity/wifi/wifi-direct ; https://developer.android.com/develop/connectivity/wifi/nsd-wifi-direct ; https://developer.android.com/privacy-and-security/local-network-permission ; https://developer.android.com/develop/background-work/services/fgs/service-types
+
+
+## GAP-22 — Mobile entity foundation (27 October 2026) 🟡
+
+Client-only `data/entity/` contains nine non-JPA entity snapshots and the ServerRelay-backed enum vocabulary; backend entities remain server-owned. Kotlin standalone compilation passed, while Android Gradle tests and real API mapping are not accepted. See [entity mapping](SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md). **No Retrofit DTO, endpoint, controller, repository or flow changed.** Remaining mismatches GAP-01–06 must be resolved in later changes.

@@ -3,8 +3,9 @@
 **Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
 
 ```text
-GAP 🟡 1/22 scope/status items closed; GAP-00 code present, Android acceptance pending
+GAP 🟡 1/23 scope/status items closed; GAP-00 code present, Android acceptance pending
 ├─ GAP-00 🟡 central endpoint, build policy, no release cleartext / payload logger
+├─ GAP-22 🟡 client entity foundation compiled; Android verification/DTO mapping pending
 ├─ GAP-01..19,21 🟡/❌/⬜ server compatibility, security and testing issues
 └─ GAP-20 ✅ remote-internet media deferred (scope decision, not code)
 ANL ✅ static inventory + server contract gap register
@@ -36,6 +37,7 @@ ANL ✅ static inventory + server contract gap register
 
 | Work / dependency | Can be done now | Can run in parallel with | Blocked by (for acceptance) |
 |---|---|---|---|
+| GAP-22 — client-safe entity foundation | Implemented; verify | GAP-06 auth and GAP-01..05 contract work | Android build/test; endpoint mapping for integration |
 | GAP-00 — network/config foundation | Implemented, verification pending | LOG/SEC audit, TEST, docs | Android Gradle tests, production HTTPS URL |
 | GAP-06 — CSRF/auth sessions | Yes | GAP-01..04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
 | GAP-01..04 — installation, device, bootstrap | Yes, contract design | GAP-06 implementation, tests | Auth for successful E2E bootstrap |

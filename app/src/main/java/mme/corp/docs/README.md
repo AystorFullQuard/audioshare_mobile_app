@@ -15,3 +15,5 @@ Old and duplicate roadmaps under `app/src/main/java/**/docs/` were removed becau
 - ServerRelay device registration, auth/CSRF, bootstrap and LAN media interoperability are **not yet repaired** by GAP-00. Pre-existing application-layer auth logs still need the LOG/SEC privacy audit; transport-layer BODY logging removal alone is not enough.
 
 Never place passwords, bearer tokens or API secrets in Gradle properties.
+
+Mobile-only entity reference: [ServerRelay ↔ SvReMobile entity mapping](src/docs/roadmap/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md). Entity definitions are not active API DTOs.
