@@ -3,6 +3,7 @@ package mme.corp.audioshare.network.retrofit
 import mme.corp.audioshare.data.storage.TokenStore
 import mme.corp.audioshare.network.interceptor.AuthInterceptor
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -17,7 +18,9 @@ object ApiClient {
 
         // Do not log auth headers, CSRF cookies, tokens, user data, or call metadata.
         // Later: scoped redacted diagnostics via OBS/LOG, never a BODY logger.
+        val csrfCookies = CsrfCookieJar(baseUrl.toHttpUrl())
         val sharedClient = OkHttpClient.Builder()
+            .cookieJar(csrfCookies)
             .followRedirects(false)
             .followSslRedirects(false)
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -25,12 +28,23 @@ object ApiClient {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
 
+        val csrfProof = CsrfProofProvider(
+            baseUrl = baseUrl.toHttpUrl(),
+            bootstrapClient = sharedClient,
+            cookies = csrfCookies
+        )
+        val csrfInterceptor = CsrfInterceptor(csrfProof)
+
+        // Refresh requests have no bearer token, but they still require CSRF.
         val refreshClient = createTokenRefreshClient(
-            buildRetrofit(sharedClient, baseUrl)
+            buildRetrofit(sharedClient.newBuilder()
+                .addInterceptor(csrfInterceptor)
+                .build(), baseUrl)
         )
 
         val authenticatedClient = sharedClient.newBuilder()
             .addInterceptor(AuthInterceptor(tokenStore))
+            .addInterceptor(csrfInterceptor)
             .authenticator(
                 TokenAuthenticator(
                     tokenStore = tokenStore,

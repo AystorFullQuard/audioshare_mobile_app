@@ -464,7 +464,9 @@ class ServeRelayCompatibilityFlowTest {
                     {
                       "userId": "$userId",
                       "deviceId": "$deviceId",
-                      "state": "ONLINE",
+                      "availability": "ONLINE",
+                      "activity": "NONE",
+                      "preference": "AUTO",
                       "currentRoomId": null,
                       "lastSeenAt": "$LOCAL_TIME"
                     }

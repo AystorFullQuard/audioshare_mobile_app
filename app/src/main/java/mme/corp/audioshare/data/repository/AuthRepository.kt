@@ -1,18 +1,17 @@
 package mme.corp.audioshare.data.repository
 
-import android.util.Log
-import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.dto.LoginRequest
 import mme.corp.audioshare.data.dto.LoginResponse
 import mme.corp.audioshare.data.dto.RefreshRequest
 import mme.corp.audioshare.data.storage.SessionManager
-import mme.corp.audioshare.exception.ApiErrorResponse
-import mme.corp.audioshare.exception.ApiException
+import mme.corp.audioshare.network.retrofit.executeApiCall
 import mme.corp.audioshare.presence.PresenceRuntimeController
 import mme.corp.audioshare.room.RoomSessionRuntimeController
 import mme.corp.audioshare.session.JwtSessionDecoder
 
+/** Network CSRF/JWT/refresh handling belongs to ApiClient, not each repository. */
 class AuthRepository(
     private val authApi: AuthApi,
     private val sessionManager: SessionManager,
@@ -21,360 +20,66 @@ class AuthRepository(
     private val roomSessionRuntimeController: RoomSessionRuntimeController =
         RoomSessionRuntimeController.NO_OP
 ) {
-
-    private val gson = Gson()
-
-    companion object {
-        private const val TAG = "AuthRepo"
-        private const val LOG_SEPARATOR = "=========================================="
-    }
-
-    init {
-        Log.d(TAG, LOG_SEPARATOR)
-        Log.d(TAG, "AuthRepository created")
-    }
-
-    suspend fun login(
-        login: String,
-        password: String
-    ): Result<LoginResponse> {
-
-        Log.d(TAG, LOG_SEPARATOR)
-        Log.d(TAG, "LOGIN REQUEST START")
-        Log.d(TAG, "Username = $login")
-        Log.d(TAG, "Password length = ${password.length}")
-
-        return try {
-
-            Log.d(TAG, "Creating LoginRequest")
-
-            val request = LoginRequest(
-                login = login,
-                password = password
-            )
-
-            Log.d(TAG, "Calling authApi.login()")
-
-            val response = authApi.login(request)
-
-            Log.d(TAG, "HTTP response received")
-            Log.d(TAG, "HTTP Code = ${response.code()}")
-            Log.d(TAG, "HTTP Message = ${response.message()}")
-            Log.d(TAG, "Successful = ${response.isSuccessful}")
-
-            if (!response.isSuccessful) {
-
-                Log.e(TAG, LOG_SEPARATOR)
-                Log.e(TAG, "HTTP REQUEST FAILED")
-                Log.e(TAG, "HTTP Code = ${response.code()}")
-                Log.e(TAG, "HTTP Message = ${response.message()}")
-
-                val rawError = try {
-                    response.errorBody()?.string()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Unable to read error body", e)
-                    null
-                }
-
-                Log.e(TAG, "Raw error body:")
-                Log.e(TAG, rawError ?: "<empty>")
-
-                val apiError = try {
-
-                    rawError?.let {
-                        gson.fromJson(it, ApiErrorResponse::class.java)
-                    }
-
-                } catch (e: Exception) {
-
-                    Log.e(TAG, "Unable to parse ApiErrorResponse", e)
-                    null
-                }
-
-                if (apiError != null) {
-
-                    Log.e(TAG, apiError.debugString())
-
-                    return Result.failure(
-                        ApiException(
-                            httpCode = response.code(),
-                            apiError = apiError
-                        )
-                    )
-                }
-
-                Log.e(TAG, "Backend returned unknown error format")
-
-                return Result.failure(
-                    Exception(
-                        rawError
-                            ?: "HTTP ${response.code()} ${response.message()}"
-                    )
-                )
-            }
-
-            Log.d(TAG, "Reading response body")
-
-            val body = response.body()
-
-            if (body == null) {
-
-                Log.e(TAG, "Response body is NULL")
-
-                return Result.failure(
-                    Exception("Empty response")
-                )
-            }
-
-            Log.i(TAG, "Login successful")
-            Log.d(TAG, "UserId       : ${body.user.id}")
-            Log.d(TAG, "SessionId    : ${JwtSessionDecoder.sessionId(body.session.accessToken)}")
-            Log.d(TAG, "TokenType    : ${JwtSessionDecoder.tokenType(body.session.accessToken)}")
-            Log.d(TAG, "AccessToken  : ${body.session.accessToken.take(20)}...")
-            Log.d(TAG, "RefreshToken : ${body.session.refreshToken.take(20)}...")
-
-            Log.d(TAG, "Saving session")
-
-            sessionManager.saveSession(
-                accessToken = body.session.accessToken,
-                refreshToken = body.session.refreshToken,
-                userId = body.user.id,
-                sessionId = JwtSessionDecoder.sessionId(body.session.accessToken)
-            )
-
-            Log.d(TAG, "Session saved successfully")
-
-            Log.i(TAG, "LOGIN REQUEST FINISHED SUCCESSFULLY")
-            Log.d(TAG, LOG_SEPARATOR)
-
-            Result.success(body)
-
-        } catch (e: Exception) {
-            Log.e(TAG, LOG_SEPARATOR)
-            Log.e(TAG, "NETWORK EXCEPTION")
-            Log.e(TAG, "Type    : ${e::class.java.simpleName}")
-            Log.e(TAG, "Message : ${e.message}", e)
-            Log.e(TAG, LOG_SEPARATOR)
-            Result.failure(e)
+    suspend fun login(login: String, password: String): Result<LoginResponse> =
+        persistResponse {
+            authApi.login(LoginRequest(login = login, password = password))
         }
-    }
 
     suspend fun refresh(): Result<LoginResponse> {
+        val refreshToken = sessionManager.getRefreshToken()
+            ?.takeIf(String::isNotBlank)
+            ?: return Result.failure(IllegalStateException("Refresh token is unavailable"))
+        return persistResponse {
+            authApi.refresh(RefreshRequest(refreshToken = refreshToken))
+        }
+    }
 
-        Log.d(TAG, LOG_SEPARATOR)
-        Log.d(TAG, "REFRESH REQUEST START")
-
+    private suspend fun persistResponse(
+        call: suspend () -> retrofit2.Response<LoginResponse>
+    ): Result<LoginResponse> {
+        val result = executeApiCall("Authentication response is empty", call)
+        if (result.isFailure) return result
+        val body = result.getOrThrow()
         return try {
-
-            Log.d(TAG, "Reading stored refresh token")
-
-            val refreshToken = sessionManager.getRefreshToken()
-
-            if (refreshToken.isNullOrBlank()) {
-
-                Log.e(TAG, "No refresh token stored")
-
-                return Result.failure(
-                    Exception("Refresh token not found")
-                )
+            require(
+                body.session.accessToken.isNotBlank() &&
+                        body.session.refreshToken.isNotBlank()
+            ) {
+                "Authentication response contains empty tokens"
             }
-
-            Log.d(TAG, "Creating RefreshRequest")
-
-            val request = RefreshRequest(
-                refreshToken = refreshToken
-            )
-
-            Log.d(TAG, "Calling authApi.refresh()")
-
-            val response = authApi.refresh(request)
-
-            Log.d(TAG, "HTTP response received")
-            Log.d(TAG, "HTTP Code = ${response.code()}")
-            Log.d(TAG, "HTTP Message = ${response.message()}")
-            Log.d(TAG, "Successful = ${response.isSuccessful}")
-
-            if (!response.isSuccessful) {
-
-                Log.e(TAG, LOG_SEPARATOR)
-                Log.e(TAG, "REFRESH FAILED")
-
-                val rawError = try {
-                    response.errorBody()?.string()
-                } catch (exception: Exception) {
-                    Log.e(
-                        TAG,
-                        "Unable to read refresh error body",
-                        exception
-                    )
-                    null
-                }
-
-                val apiError = try {
-
-                    rawError?.let {
-                        gson.fromJson(it, ApiErrorResponse::class.java)
-                    }
-
-                } catch (exception: Exception) {
-
-                    Log.e(
-                        TAG,
-                        "Unable to parse refresh ApiErrorResponse",
-                        exception
-                    )
-                    null
-                }
-
-                if (apiError != null) {
-
-                    Log.e(TAG, apiError.debugString())
-
-                    return Result.failure(
-                        ApiException(
-                            httpCode = response.code(),
-                            apiError = apiError
-                        )
-                    )
-                }
-
-                return Result.failure(
-                    Exception(
-                        rawError ?: "HTTP ${response.code()} ${response.message()}"
-                    )
-                )
-            }
-
-            val body = response.body()
-
-            if (body == null) {
-
-                Log.e(TAG, "Response body is NULL")
-
-                return Result.failure(
-                    Exception("Empty response")
-                )
-            }
-
-            Log.d(TAG, "Updating stored tokens")
-
             sessionManager.saveSession(
                 accessToken = body.session.accessToken,
                 refreshToken = body.session.refreshToken,
                 userId = body.user.id,
                 sessionId = JwtSessionDecoder.sessionId(body.session.accessToken)
             )
-
-            Log.i(TAG, "Refresh successful")
-
-            Log.d(TAG, "UserId       : ${body.user.id}")
-
-            Log.d(
-                TAG,
-                "SessionId    : ${
-                    JwtSessionDecoder.sessionId(
-                        body.session.accessToken
-                    )
-                }"
-            )
-
-            Log.d(
-                TAG,
-                "TokenType    : ${
-                    JwtSessionDecoder.tokenType(
-                        body.session.accessToken
-                    )
-                }"
-            )
-
-            Log.d(
-                TAG,
-                "AccessToken  : ${body.session.accessToken.take(20)}..."
-            )
-
-            Log.d(
-                TAG,
-                "RefreshToken : ${body.session.refreshToken.take(20)}..."
-            )
-
             Result.success(body)
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, LOG_SEPARATOR)
-            Log.e(TAG, "REFRESH EXCEPTION")
-            Log.e(TAG, "Type    : ${e::class.java.simpleName}")
-            Log.e(TAG, "Message : ${e.message}", e)
-            Log.e(TAG, LOG_SEPARATOR)
-
-            Result.failure(e)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Result.failure(exception)
         }
     }
 
+    /** Local logout must succeed even if the server is unreachable. */
     suspend fun logout(): Result<Unit> {
-
-        Log.d(TAG, LOG_SEPARATOR)
-        Log.d(TAG, "LOGOUT START")
-
         presenceRuntimeController.stop()
         roomSessionRuntimeController.clearForLogout()
-
+        try {
+            // Logout is best-effort over the network; never retain the local token for retry.
+            authApi.logout()
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (_: Exception) {
+            // Network failure does not prevent device-local logout.
+        }
         return try {
-
-            Log.d(TAG, "Calling authApi.logout()")
-
-            val networkResult = runCatching {
-                authApi.logout()
-            }
-
-            if (networkResult.isSuccess) {
-
-                Log.d(TAG, "Backend logout completed")
-
-            } else {
-
-                Log.w(
-                    TAG,
-                    "Backend logout failed: ${networkResult.exceptionOrNull()?.message}"
-                )
-            }
-
-            Log.d(TAG, "Clearing local session")
-
             sessionManager.clearSession()
-
-            Log.d(TAG, "Local session cleared")
-
-            Log.i(TAG, "LOGOUT FINISHED")
-
             Result.success(Unit)
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "LOGOUT CRASHED", e)
-
-            try {
-
-                Log.d(TAG, "Attempting emergency session cleanup")
-
-                sessionManager.clearSession()
-
-                Log.d(TAG, "Emergency cleanup completed")
-
-            } catch (cleanupException: Exception) {
-
-                Log.e(
-                    TAG,
-                    "Emergency cleanup failed",
-                    cleanupException
-                )
-            }
-
-            Result.failure(e)
-
-        } finally {
-
-            Log.d(TAG, LOG_SEPARATOR)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            Result.failure(exception)
         }
     }
 }

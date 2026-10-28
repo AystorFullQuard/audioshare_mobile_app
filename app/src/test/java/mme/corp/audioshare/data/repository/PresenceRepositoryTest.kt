@@ -1,4 +1,4 @@
-    package mme.corp.audioshare.data.repository
+package mme.corp.audioshare.data.repository
 
 import com.google.gson.JsonParser
 import kotlinx.coroutines.test.runTest
@@ -41,6 +41,7 @@ class PresenceRepositoryTest {
         assertTrue(result.isSuccess)
         assertEquals(PresenceState.IN_ROOM, result.getOrThrow().state)
         assertEquals("room-id", result.getOrThrow().currentRoomId)
+        assertEquals("AUTO", result.getOrThrow().preference.name)
 
         val body = JsonParser.parseString(
             server.takeRequest().body.readUtf8()
@@ -51,7 +52,7 @@ class PresenceRepositoryTest {
     }
 
     @Test
-    fun heartbeatSendsExplicitStreamingState() = runTest {
+    fun heartbeatDoesNotPermitClientToOverrideServerActivity() = runTest {
         server.enqueue(successResponse("STREAMING", "room-id"))
         val repository = repository(FakeDeviceIdStore("device-id"))
 
@@ -64,7 +65,7 @@ class PresenceRepositoryTest {
             server.takeRequest().body.readUtf8()
         ).asJsonObject
 
-        assertEquals("STREAMING", body["state"].asString)
+        assertFalse(body.has("state"))
     }
 
     @Test
@@ -82,13 +83,13 @@ class PresenceRepositoryTest {
     fun mapsServeRelayApiError() = runTest {
         server.enqueue(
             MockResponse()
-                .setResponseCode(409)
+                .setResponseCode(403)
                 .setHeader("Content-Type", "application/json")
                 .setBody(
                     """
                     {
-                      "code": "PRESENCE_STATE_INVALID",
-                      "message": "STREAMING requires an active current room",
+                      "code": "DEVICE_NOT_OWNED",
+                      "message": "Heartbeat device does not match authenticated device",
                       "fieldErrors": {},
                       "timestamp": "2026-07-28T12:00:00"
                     }
@@ -100,8 +101,8 @@ class PresenceRepositoryTest {
         val result = repository.heartbeat(PresenceState.STREAMING)
 
         val exception = result.exceptionOrNull() as ApiException
-        assertEquals(409, exception.httpCode)
-        assertEquals("PRESENCE_STATE_INVALID", exception.apiError.code)
+        assertEquals(403, exception.httpCode)
+        assertEquals("DEVICE_NOT_OWNED", exception.apiError.code)
     }
 
     private fun repository(store: FakeDeviceIdStore): PresenceRepository {
@@ -120,7 +121,9 @@ class PresenceRepositoryTest {
                 {
                   "userId": "user-id",
                   "deviceId": "device-id",
-                  "state": "$state",
+                  "availability": "ONLINE",
+                  "activity": "$state",
+                  "preference": "AUTO",
                   "currentRoomId": $roomField,
                   "lastSeenAt": "2026-07-28T12:00:00"
                 }

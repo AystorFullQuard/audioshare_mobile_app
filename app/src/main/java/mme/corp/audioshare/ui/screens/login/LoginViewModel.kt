@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.exception.ApiException
-import mme.corp.audioshare.session.JwtSessionDecoder
 
 class LoginViewModel(
     private val authRepository: AuthRepository
@@ -29,13 +28,11 @@ class LoginViewModel(
     init {
         Log.d(TAG, "==========================================")
         Log.d(TAG, "LoginViewModel created")
-        Log.d(TAG, "Initial state = ${_uiState.value}")
     }
 
     fun updateLogin(login: String) {
 
         Log.d(TAG, "updateLogin()")
-        Log.d(TAG, "New login = '$login'")
 
         _uiState.update {
             it.copy(login = login)
@@ -47,7 +44,6 @@ class LoginViewModel(
     fun updatePassword(password: String) {
 
         Log.d(TAG, "updatePassword()")
-        Log.d(TAG, "Password length = ${password.length}")
 
         _uiState.update {
             it.copy(password = password)
@@ -78,7 +74,6 @@ class LoginViewModel(
 
                 val result = authRepository.logout()
 
-                Log.d(TAG, "Logout result = $result")
 
                 _uiState.value = LoginUiState()
 
@@ -101,9 +96,6 @@ class LoginViewModel(
 
         Log.d(TAG, "==========================================")
         Log.d(TAG, "LOGIN START")
-        Log.d(TAG, "Username = '${state.login}'")
-        Log.d(TAG, "Password length = ${state.password.length}")
-        Log.d(TAG, "Current UI state = $state")
 
         if (state.login.isBlank()) {
 
@@ -148,14 +140,10 @@ class LoginViewModel(
                 )
 
                 Log.d(TAG, "Repository returned")
-                Log.d(TAG, "Result = $result")
 
-                result.onSuccess { response ->
+                result.onSuccess {
 
                     Log.i(TAG, "LOGIN SUCCESS")
-                    Log.d(TAG, "UserId = ${response.user.id}")
-                    Log.d(TAG, "SessionId = ${JwtSessionDecoder.sessionId(response.session.accessToken)}")
-                    Log.d(TAG, "Token type = ${JwtSessionDecoder.tokenType(response.session.accessToken)}")
 
                     Log.d(TAG, "Updating UI state")
 
@@ -173,21 +161,19 @@ class LoginViewModel(
                 result.onFailure { throwable ->
 
                     Log.e(TAG, "==========================================")
-                    Log.e(TAG, "LOGIN FAILED", throwable)
                     Log.e(TAG, "Exception = ${throwable::class.simpleName}")
 
                     val errorMessage = when (throwable) {
 
                         is ApiException -> {
 
-                            Log.e(TAG, throwable.apiError.debugString())
 
                             throwable.apiError.displayMessage()
                         }
 
                         else -> {
 
-                            Log.e(TAG, "Message = ${throwable.message}")
+
 
                             throwable.message ?: "Unknown error"
                         }
@@ -219,7 +205,6 @@ class LoginViewModel(
             } finally {
 
                 Log.d(TAG, "LOGIN FLOW FINISHED")
-                Log.d(TAG, "Final UI State = ${_uiState.value}")
                 Log.d(TAG, "==========================================")
             }
         }

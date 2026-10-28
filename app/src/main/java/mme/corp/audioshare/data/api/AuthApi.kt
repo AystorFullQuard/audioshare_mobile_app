@@ -14,7 +14,7 @@ interface AuthApi {
         @Body request: LoginRequest
     ): Response<LoginResponse>
 
-    @POST("api/v1/auth/logout")
+    @POST("/api/v1/auth/logout")
     suspend fun logout(): Response<Unit>
 
     @POST("/api/v1/auth/refresh")

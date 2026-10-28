@@ -1,9 +1,4 @@
 package mme.corp.audioshare.data.dto.presence
 
-/**
- * A null state means "keep the current server-authoritative state".
- */
-data class PresenceHeartbeatRequest(
-    val deviceId: String,
-    val state: PresenceState? = null
-)
+/** Heartbeat uses the session-bound device; activity is managed by the backend. */
+data class PresenceHeartbeatRequest(val deviceId: String)

@@ -1,27 +1,28 @@
 # SvReMobile — staged implementation dependency tree
 
-**Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
+**Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md) · [HTTP endpoints](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
 
 ```text
-GAP 🟡 1/23 scope/status items closed; GAP-00..04/22 implemented, Android acceptance pending
-├─ GAP-00 🟡 central endpoint policy; Gradle/Android verification pending
-├─ GAP-01 🟡 /devices/register path + request/response test fixture
-├─ GAP-02 🟡 installation ID + logout/recovery persistence + backup exclusions
-├─ GAP-03 🟡 bootstrap installationId, exact server request fields
-├─ GAP-04 🟡 bootstrap response session/user/config/devices/presence fields
-├─ GAP-22 🟡 client entity foundation compiled; Android verification/DTO mapping pending
-├─ GAP-05..19,21 🟡/❌/⬜ presence/auth/security and testing remain open
+GAP 🟡 7/23 accepted (owner-reported prior test pass); GAP-05/06 implemented, new tests pending
+├─ GAP-00 ✅ central endpoint policy; owner-reported prior tests passed, E2E pending
+├─ GAP-01 ✅ /devices/register path + request/response test fixture
+├─ GAP-02 ✅ installation ID + logout/recovery persistence + backup exclusions
+├─ GAP-03 ✅ bootstrap installationId, exact server request fields
+├─ GAP-04 ✅ bootstrap response session/user/config/devices/presence fields
+├─ GAP-22 ✅ client entity foundation compiled; Android verification/DTO mapping pending
+├─ GAP-05 🟡 presence schema; GAP-06 🟡 CSRF/JWT wiring (new build + E2E pending)
+├─ GAP-07..19,21 🟡/❌/⬜ remaining security/feature testing
 └─ GAP-20 ✅ remote-internet media deferred (scope decision, not code)
 ANL ✅ static inventory + server contract gap register
 └─ ANL-02 ✅ Q01–Q08 + R01–R04 product decisions recorded (code still unimplemented)
    ├─ ARCH 🟡 one Android app, module boundary choice
    │  ├─ ENV-00 🟡 centralized per-variant endpoint policy; Android test and TLS endpoint pending
-   │  │  └─ SEC-00 ❌ public auth CSRF proof missing
+   │  │  └─ SEC-00 🟡 shared CSRF/cookie proof implemented; live auth gate pending
    │  │     └─ AUTH 🟡 align login / refresh / stored session
    │  │        └─ DEV-00 🟡 endpoint/installationId implemented; Docker auth proof pending
    │  │           └─ BOOT-00 🟡 bootstrap request/response aligned; live login and CSRF pending
    │  │              ├─ ROOM 🟡 → INV ⬜ → CALL ⬜
-   │  │              ├─ PRES ❌ → realtime-backed member updates
+   │  │              ├─ PRES 🟡 presence heartbeat aligned; realtime member updates pending
    │  │              └─ RT ⬜ → WebSocket auth, subscriptions, reconnect
    │  └─ SEC-01..05 ⬜ client credential and local network security
    ├─ OFF-01 ⬜ prior-login offline host grant + 4 accepted security controls; TTL/logout semantics to design
@@ -41,12 +42,12 @@ ANL ✅ static inventory + server contract gap register
 
 | Work / dependency | Can be done now | Can run in parallel with | Blocked by (for acceptance) |
 |---|---|---|---|
-| GAP-22 — client-safe entity foundation | Implemented; verify | GAP-06 auth and GAP-01..05 contract work | Android build/test; endpoint mapping for integration |
-| GAP-00 — network/config foundation | Implemented, verification pending | LOG/SEC audit, TEST, docs | Android Gradle tests, production HTTPS URL |
-| GAP-01/02 — registration + installation ID | Implemented, verify | GAP-06 auth; GAP-03 bootstrap | Gradle tests + backend 201/session-binding |
-| GAP-06 — CSRF/auth sessions | Yes | GAP-03/04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
-| GAP-03/04 — bootstrap | Implemented; verify | GAP-06 implementation, tests | Real backend authenticated E2E + Android tests |
-| GAP-05 — presence model | Yes | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
+| GAP-22 — client-safe entity foundation | Owner accepted | GAP-06 auth and GAP-01..05 contract work | Android build/test; endpoint mapping for integration |
+| GAP-00 — network/config foundation | Owner accepted; E2E pending | LOG/SEC audit, TEST, docs | Android Gradle tests, production HTTPS URL |
+| GAP-01/02 — registration + installation ID | Owner accepted; E2E pending | GAP-06 auth; GAP-03 bootstrap | Gradle tests + backend 201/session-binding |
+| GAP-06 — CSRF/auth sessions | Implemented, test pending | GAP-03/04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
+| GAP-03/04 — bootstrap | Owner accepted; E2E pending | GAP-06 implementation, tests | Real backend authenticated E2E + Android tests |
+| GAP-05 — presence model | Implemented, test pending | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
 | GAP-09..10 — Invite/Call/Realtime | Interface work now | OFF transport experiments | Working auth/device/room control plane |
 | GAP-11,15..18 — offline media and sync | Threat model/prototype now | Backend GAP workstreams, PERF | Offline grant, key agreement and pairing designs |
 | GAP-08,12..13,19,21 — quality/release gates | Test harness now | Every workstream | Three phones, live backend, accepted media modes |

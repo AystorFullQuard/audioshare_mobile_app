@@ -107,7 +107,7 @@ class SessionManager(
 
                 val id = preferences[USER_ID]
 
-                Log.v(TAG, "UserId requested = $id")
+
 
                 id
             }
@@ -128,7 +128,7 @@ class SessionManager(
 
                 val id = preferences[SESSION_ID]
 
-                Log.v(TAG, "SessionId requested = $id")
+
 
                 id
             }
@@ -170,10 +170,10 @@ class SessionManager(
 
         Log.d(TAG, "==========================================")
         Log.d(TAG, "saveSession() START")
-        Log.d(TAG, "UserId=$userId")
-        Log.d(TAG, "SessionId=$sessionId")
-        Log.d(TAG, "AccessToken length=${accessToken.length}")
-        Log.d(TAG, "RefreshToken length=${refreshToken.length}")
+
+
+
+
 
         try {
 
@@ -409,8 +409,8 @@ class SessionManager(
 
         Log.d(TAG, "==========================================")
         Log.d(TAG, "updateTokens() START")
-        Log.d(TAG, "AccessToken length=${accessToken.length}")
-        Log.d(TAG, "RefreshToken length=${refreshToken.length}")
+
+
 
         try {
 
