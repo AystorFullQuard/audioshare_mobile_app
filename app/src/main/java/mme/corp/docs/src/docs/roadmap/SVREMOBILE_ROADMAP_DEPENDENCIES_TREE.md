@@ -3,14 +3,14 @@
 **Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md) · [HTTP endpoints](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
 
 ```text
-GAP 🟡 7/23 accepted (owner-reported prior test pass); GAP-05/06 implemented, new tests pending
+GAP 🟡 9/23 accepted (owner-reported tests); GAP-07/08 implemented, latest run 51/52 passed; single JUnit teardown signature corrected, rerun pending; GAP-09/10 transport/API contracts implemented, E2E pending
 ├─ GAP-00 ✅ central endpoint policy; owner-reported prior tests passed, E2E pending
 ├─ GAP-01 ✅ /devices/register path + request/response test fixture
 ├─ GAP-02 ✅ installation ID + logout/recovery persistence + backup exclusions
 ├─ GAP-03 ✅ bootstrap installationId, exact server request fields
 ├─ GAP-04 ✅ bootstrap response session/user/config/devices/presence fields
 ├─ GAP-22 ✅ client entity foundation compiled; Android verification/DTO mapping pending
-├─ GAP-05 🟡 presence schema; GAP-06 🟡 CSRF/JWT wiring (new build + E2E pending)
+├─ GAP-05 ✅ presence schema; GAP-06 ✅ CSRF/JWT (Docker E2E open)
 ├─ GAP-07..19,21 🟡/❌/⬜ remaining security/feature testing
 └─ GAP-20 ✅ remote-internet media deferred (scope decision, not code)
 ANL ✅ static inventory + server contract gap register
@@ -45,10 +45,10 @@ ANL ✅ static inventory + server contract gap register
 | GAP-22 — client-safe entity foundation | Owner accepted | GAP-06 auth and GAP-01..05 contract work | Android build/test; endpoint mapping for integration |
 | GAP-00 — network/config foundation | Owner accepted; E2E pending | LOG/SEC audit, TEST, docs | Android Gradle tests, production HTTPS URL |
 | GAP-01/02 — registration + installation ID | Owner accepted; E2E pending | GAP-06 auth; GAP-03 bootstrap | Gradle tests + backend 201/session-binding |
-| GAP-06 — CSRF/auth sessions | Implemented, test pending | GAP-03/04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
+| GAP-06 — CSRF/auth sessions | Owner accepted; Docker E2E pending | GAP-03/04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
 | GAP-03/04 — bootstrap | Owner accepted; E2E pending | GAP-06 implementation, tests | Real backend authenticated E2E + Android tests |
-| GAP-05 — presence model | Implemented, test pending | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
-| GAP-09..10 — Invite/Call/Realtime | Interface work now | OFF transport experiments | Working auth/device/room control plane |
+| GAP-05 — presence model | Owner accepted; Docker E2E pending | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
+| GAP-09..10 — Invite/Call/Realtime | Interfaces implemented, verification now | OFF transport experiments | Live JWT/device binding, WSS subscription/reconnect, call/invite REST E2E |
 | GAP-11,15..18 — offline media and sync | Threat model/prototype now | Backend GAP workstreams, PERF | Offline grant, key agreement and pairing designs |
 | GAP-08,12..13,19,21 — quality/release gates | Test harness now | Every workstream | Three phones, live backend, accepted media modes |
 
@@ -76,3 +76,5 @@ The dependency matrix permits independent development, **not** premature complet
 - **Background:** allow ongoing audio with screen locked/app background when Android permits, with user-visible service notification, appropriate permissions and cleanup; do not silently run camera in background.
 - **Hardware:** three different Android devices are available; models/OS versions arrive before TEST-02, not required to record architecture decisions.
 - **Release:** Google Play App Bundle/internal + closed testing with three different Android devices, foreground service/camera/mic/local network policy verification.
+
+**GAP-07/08 security additions:** Origin guard + strict debug allowlist and AndroidKeyStore AES-GCM token envelopes can be verified independently in parallel; production TLS, physical-device debug host allowlisting, legacy-token migration and Android backup/restore tests are still required for closure.

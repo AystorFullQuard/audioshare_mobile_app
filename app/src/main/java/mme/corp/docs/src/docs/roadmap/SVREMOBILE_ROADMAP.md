@@ -1,7 +1,7 @@
 # SvReMobile — Android / ServerRelay integration roadmap
 
 **Source:** supplied `SvReMobile.zip` (29 October work request) and supplied `ServerRelay.zip`, verified against the extracted sources; archive contents do not independently prove the precise 11:43 EET working-tree timestamp. R01–R04 remain accepted.
-**Current integration:** GAP-00–06/20/22 accepted for the client-side scope based on owner-reported passing tests; GAP-07 hardened API origin and debug transport, GAP-08 encrypted token-at-rest migration implemented and awaiting new Android tests. SvRe Home is the default offline-capable entry; avatar opens login, signed-in Home initializes bootstrap and shows server-restored My Rooms; unimplemented local/video actions remain labeled. Docker E2E remains open.
+**Current integration (29 Oct):** GAP-00–06/20/22 accepted for previously tested client-side scope (owner-reported JVM tests); GAP-07/08 remain in Android verification (latest run 51/52 passed; one JUnit invalid `tearDown` signature, now corrected pending rerun); test suite now uses isolated per-case DataStore fixtures in the target app context, pending rerun. GAP-09 WSS signaling boundary and GAP-10 invite/call REST contracts implemented **partially**, unaccepted until live E2E and lifecycle/security gates. Fresh per-auth CSRF proof/cookie lifetime and HomeAppearance styling added. SvRe Home remains default; Docker login→My Rooms and Android tests remain pending.
 **Backend contract authority:** actual `ServerRelay/boot/src/main/java/sv/re/controller/`, `ServerRelay/dto/src/main/java/`, `ServerRelay/docs/src/main/docs/bootstrap/DEVICE_BOOTSTRAP_JOINT_CONTRACT_V1.md`, `security/SEC05_CSRF_CLIENT_CONTRACT.md`, and `realtime/` documents. **Do not use old mobile mock fixtures as proof of compatibility.**
 **Cross-references:** [integration GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [dependency table](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [architecture and security decisions](SVREMOBILE_ARCHITECTURE_SECURITY_DECISIONS.md) · [entity contract](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md) · [endpoint matrix and JWT/CSRF rules](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
 
@@ -18,7 +18,7 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 
 ## Overall completion
 
-**Owner-accepted planning/code items:** `12/104` (3 ANL, GAP-00–06, GAP-20, GAP-22; user-reported passing tests). GAP-07/08 were implemented in the preceding revision. Home-as-default/login-on-avatar and debug LAN setup are implemented in the current revision, pending new Android and backend tests. No remote internet media, production launch or LAN security acceptance is implied.
+**Owner-accepted planning/code items:** `12/104` (3 ANL, GAP-00–06, GAP-20, GAP-22, for accepted earlier coverage only). All reported JVM `test` tests pass; **51/52 instrumentation tests passed in the latest owner-run suite; one JUnit initialization error remains pending rerun**, with a known, corrected `@After` signature. GAP-07/08 and new auth changes require rerun. JUnit `tearDown()` now explicitly returns Unit, and debug login displays its configured backend origin with redacted, categorized failure messages. Login E2E against Docker remains unverified. GAP-09/10 code exists as transport/API scaffolding, not accepted realtime session/media flows. No remote internet media or production launch is implied.
 
 | Stage | Status | Bar — verified steps | Priority / dependency |
 |---|---|---|---|
@@ -32,9 +32,9 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 | **BOOT** — Session bootstrap | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / DEV |
 | **ROOM** — Rooms and memberships | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / BOOT |
 | **PRES** — Presence | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / BOOT/ROOM |
-| **INV** — Invites and QR admission | ⬜ | `░░░░░░░░░░░░` 0/3 | P1 / ROOM |
-| **CALL** — CallSession control plane | ⬜ | `░░░░░░░░░░░░` 0/3 | P1 / ROOM |
-| **RT** — Realtime signaling | ⬜ | `░░░░░░░░░░░░` 0/4 | P1 / AUTH/DEV/ROOM |
+| **INV** — Invites and QR admission | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / ROOM |
+| **CALL** — CallSession control plane | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / ROOM |
+| **RT** — Realtime signaling | 🟡 | `░░░░░░░░░░░░` 0/4 | P1 / AUTH/DEV/ROOM |
 | **OFF** — Local hotspot without internet | 🟡 | `░░░░░░░░░░░░` 0/5 | P0 design / SEC, product decision |
 | **AUD** — Audio transport and media runtime | 🟡 | `░░░░░░░░░░░░` 0/4 | P1 / OFF/CALL, chosen media |
 | **VID** — Video calls and in-call camera | ⬜ | `░░░░░░░░░░░░` 0/4 | P2 implementation / CALL, secure media |
@@ -56,10 +56,10 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 | **GAP-06 / AUTH** CSRF/login/refresh | **Owner accepted; Docker E2E pending** | Device DTO work, offline threat model | Server CSRF policy + Docker E2E acceptance |
 | **GAP-03/04 / BOOT** bootstrap request/response | **Owner accepted; E2E pending** | GAP-06 CSRF, tests | Actual backend login→register→bootstrap E2E |
 | **GAP-05 / PRES / ROOM** presence model | **Owner accepted; Docker E2E pending** | DEV/BOOT DTOs, OBS/PERF | Bootstrap for end-to-end proof |
-| **GAP-09..10 / INV / CALL / RT** | **Design/interfaces now** | Offline pairing/security | AUTH + DEV + BOOT + ROOM accepted |
+| **GAP-09..10 / INV / CALL / RT** | **Client interfaces implemented (unverified)** | Offline pairing/security, Android tests | Auth/device binding + Docker WSS and REST E2E; reconnect/replay handling |
 | **GAP-11,15..18 / OFF / AUD / SYNC** | **Threat model/prototype now** | Online contract work, perf baselines | Approved grant, pairing and crypto design |
 | **GAP-07 / ENV / SEC** API transport | **Hardening implemented** | GAP-08, UI, unit tests | Debug LAN allowlist, TLS deployment and transport E2E |
-| **GAP-08 / AUTH / SEC** encrypted DataStore tokens | **Encryption/migration implemented** | GAP-07, UI, Android tests | AndroidKeyStore instrumentation + migration and tamper tests |
+| **GAP-08 / AUTH / SEC** encrypted DataStore tokens | **Encryption/migration implemented; 1 invalid JUnit teardown signature fixed, rerun pending** | GAP-07, UI, Android tests | Rerun 52 instrumentation cases; validate token encryption/migration on device |
 | **GAP-12..13,19,21 / TEST / PERF / CI** | **Harness and audit now** | All workstreams | Android SDK/devices; finished flows for sign-off |
 
 Full stage dependencies: [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md). **Parallel** means design/coding can proceed independently; no dependent acceptance is implied.

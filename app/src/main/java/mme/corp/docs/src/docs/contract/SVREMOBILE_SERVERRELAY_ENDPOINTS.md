@@ -79,3 +79,18 @@
 ### Android runtime security (GAP-07/08)
 
 The Retrofit client is origin-bound before auth interceptors. Debug cleartext permits only explicitly configured development hostnames in `app/src/debug/res/xml/network_security_config.xml`; if using a physical phone, add the **exact private IP** to the debug XML and set `-PserverRelayDebugBaseUrl=http://<LAN-IP>:8090/`. Production requires HTTPS and a valid certificate; never ship debug cleartext policies. All protected requests include the access JWT as `Authorization: Bearer …`, while login/refresh and other modifying requests need the same-origin CSRF proof/cookie as documented above. Session tokens are encrypted by AndroidKeyStore AES-GCM before DataStore writes, including on upgrade from old plaintext preference values. No tokens belong in URLs, logs, backups, screenshots, or diagnostic cards.
+
+### Added client contracts — GAP-09/10 (29 Oct)
+
+- `RealtimeSignalingClient` uses an explicitly opened `ws(s)://<configured-origin>/ws/realtime` connection; handshake sends `Authorization: Bearer <access JWT>` and `X-AudioShare-Device-Id: <server UUID>`. The JSON envelope uses `version: "1"`, an event UUID, UTC timestamp and `{}` payload. Room and call subscriptions are opt-in. WebSocket connection is closed on explicit logout. **Not a media transport; reconnect/resubscription and live E2E are still open.**
+- `InvitesApi`: `POST/GET /api/v1/rooms/{roomId}/invites`; `POST /api/v1/rooms/{roomId}/invites/qr` (PNG); `DELETE /api/v1/rooms/{roomId}/invites/{inviteId}`. Request for creation requires `deviceId` from device binding; raw code appears only in creation response and is never persisted by the repository.
+- `CallsApi`: `POST /api/v1/rooms/{roomId}/calls`, `GET /api/v1/rooms/{roomId}/calls/current`, `GET /api/v1/calls/{callId}`, and `POST /api/v1/calls/{callId}/{join|leave|end}`. Model is `CallSnapshot` and participant snapshots. No media negotiation implemented.
+- `AuthApi` retains `POST /api/v1/auth/login`, `refresh`, `logout`. Every auth write now obtains a **fresh** `GET /api/v1/auth/csrf` proof and HTTP-only cookie, sends the returned masked proof in `X-XSRF-TOKEN`, and drops *both* in-memory objects after response/failure. JWT is not sent to login/refresh; protected routes carry JWT. CSRF failure is not automatically replayed. No proof/cookie is written to persistent storage.
+
+These are source-aligned endpoint contracts, not proof of successful login or realtime calls against a running ServerRelay Docker instance.
+
+### Debug login diagnostics (29 Oct)
+
+The debug login screen displays the configured backend base URL and a redacted failure category. On Android Emulator use `http://10.0.2.2:8090/` when ServerRelay is reachable on the host; on a physical device set `serverRelayDebugBaseUrl=http://<your-PC-LAN-IPv4>:8090/` in root `gradle.properties`, and permit the same exact host in `app/src/debug/res/xml/network_security_config.xml`. Build the debug variant again; ensure the phone and PC can reach each other and local firewall/Docker port 8090 is exposed. Never use `localhost` on the phone to mean your development PC. Do not place real credentials or JWTs in Gradle files, logs, or issue reports.
+
+Login first GETs `/api/v1/auth/csrf` without a JWT, receives the masked `token` plus `XSRF-TOKEN` cookie, and POSTs `/api/v1/auth/login` with the matching `X-XSRF-TOKEN` header and cookie. The proof is cleared after the auth transaction. A 401 indicates credentials/auth rejection, a 403 indicates access/CSRF rejection, and a connection error indicates reachability; do not treat them as the same failure. This is client-side contract alignment; a real running-ServerRelay login is not yet proven.
