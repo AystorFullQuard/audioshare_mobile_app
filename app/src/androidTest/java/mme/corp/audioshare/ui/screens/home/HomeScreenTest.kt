@@ -1,5 +1,9 @@
 package mme.corp.audioshare.ui.screens.home
 
+import mme.corp.audioshare.testing.AwakeUnlockedDeviceRule
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
+
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -14,8 +18,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HomeScreenTest {
 
+    private val composeRule = createComposeRule()
+
     @get:Rule
-    val composeRule = createComposeRule()
+    val uiTestRules: TestRule = RuleChain.outerRule(AwakeUnlockedDeviceRule()).around(composeRule)
 
     @Test
     fun roomsEntryInvokesNavigationOnce() {

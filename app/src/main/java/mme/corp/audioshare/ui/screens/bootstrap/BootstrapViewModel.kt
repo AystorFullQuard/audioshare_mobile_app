@@ -10,12 +10,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.exception.ApiException
+import mme.corp.audioshare.data.dto.UserDto
 import mme.corp.audioshare.startup.BootstrapStartupCoordinator
 import mme.corp.audioshare.startup.BootstrapStartupRequest
 
 class BootstrapViewModel(
     private val startupCoordinator: BootstrapStartupCoordinator,
-    private val startupRequest: BootstrapStartupRequest
+    private val startupRequest: BootstrapStartupRequest,
+    private val onCurrentUser: (UserDto?) -> Unit = {}
 ) : ViewModel() {
 
     private val mutableUiState = MutableStateFlow(BootstrapUiState())
@@ -45,6 +47,7 @@ class BootstrapViewModel(
             try {
                 startupCoordinator.initialize(startupRequest)
                     .onSuccess { snapshot ->
+                        onCurrentUser(snapshot.sessionBootstrap.user)
                         mutableUiState.value = BootstrapUiState(
                             isLoading = false,
                             isComplete = true,
@@ -77,7 +80,8 @@ class BootstrapViewModel(
 
     class Factory(
         private val startupCoordinator: BootstrapStartupCoordinator,
-        private val startupRequest: BootstrapStartupRequest
+        private val startupRequest: BootstrapStartupRequest,
+        private val onCurrentUser: (UserDto?) -> Unit = {}
     ) : ViewModelProvider.Factory {
 
         @Suppress("UNCHECKED_CAST")
@@ -88,7 +92,8 @@ class BootstrapViewModel(
 
             return BootstrapViewModel(
                 startupCoordinator = startupCoordinator,
-                startupRequest = startupRequest
+                startupRequest = startupRequest,
+                onCurrentUser = onCurrentUser
             ) as T
         }
     }

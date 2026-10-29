@@ -1,7 +1,6 @@
 package mme.corp.audioshare.data.storage
 
 import android.content.Context
-import android.util.Log
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.edit
@@ -12,154 +11,52 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 
 private val Context.dataStore by preferencesDataStore(name = "session")
 
-class SessionManager(
-    private val context: Context
-) : DeviceIdStore, InstallationIdStore, TokenStore {
+/** DataStore owns atomic snapshots; tokens are encrypted by AndroidKeyStore before persistence. */
+class SessionManager(context: Context) : DeviceIdStore, InstallationIdStore, TokenStore {
+    private val store = context.applicationContext.dataStore
+    private val cipher = AndroidTokenCipher()
+    private val migrationLock = Mutex()
+    private var legacyMigrated = false
 
-    companion object {
-
-        private const val TAG = "SessionManager"
-
-        private val ACCESS_TOKEN =
-            stringPreferencesKey("access_token")
-
-        private val REFRESH_TOKEN =
-            stringPreferencesKey("refresh_token")
-
-        private val USER_ID =
-            stringPreferencesKey("user_id")
-
-        private val SESSION_ID =
-            stringPreferencesKey("session_id")
-
+    private companion object {
+        val ACCESS_TOKEN = stringPreferencesKey("access_token")
+        val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
+        val USER_ID = stringPreferencesKey("user_id")
+        val SESSION_ID = stringPreferencesKey("session_id")
     }
 
-    init {
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "SessionManager created")
+    /** One-time atomic upgrade of pre-GAP-08 unencrypted preferences. */
+    private suspend fun migrateLegacyTokens() = migrationLock.withLock {
+        if (legacyMigrated) return@withLock
+        store.edit { prefs ->
+            listOf(ACCESS_TOKEN, REFRESH_TOKEN).forEach { key ->
+                val value = prefs[key] ?: return@forEach
+                if (!cipher.isEnvelope(value)) prefs[key] = cipher.seal(value)
+            }
+        }
+        legacyMigrated = true
     }
 
-    val accessToken: Flow<String?> =
-        context.dataStore.data
-            .catch { exception ->
+    private val safeData = store.data
+        .catch { cause ->
+            if (cause is IOException) emit(emptyPreferences()) else throw cause
+        }
+        .onStart { migrateLegacyTokens() }
 
-                Log.e(TAG, "accessToken flow exception", exception)
-
-                if (exception is IOException) {
-                    emit(emptyPreferences())
-                } else {
-                    throw exception
-                }
-            }
-            .map { preferences ->
-
-                val token = preferences[ACCESS_TOKEN]
-
-                Log.v(
-                    TAG,
-                    "Access token requested. Exists=${!token.isNullOrBlank()}"
-                )
-
-                token
-            }
-
-    val refreshToken: Flow<String?> =
-        context.dataStore.data
-            .catch { exception ->
-
-                Log.e(TAG, "refreshToken flow exception", exception)
-
-                if (exception is IOException) {
-                    emit(emptyPreferences())
-                } else {
-                    throw exception
-                }
-            }
-            .map { preferences ->
-
-                val token = preferences[REFRESH_TOKEN]
-
-                Log.v(
-                    TAG,
-                    "Refresh token requested. Exists=${!token.isNullOrBlank()}"
-                )
-
-                token
-            }
-
-    val userId: Flow<String?> =
-        context.dataStore.data
-            .catch { exception ->
-
-                Log.e(TAG, "userId flow exception", exception)
-
-                if (exception is IOException) {
-                    emit(emptyPreferences())
-                } else {
-                    throw exception
-                }
-            }
-            .map { preferences ->
-
-                val id = preferences[USER_ID]
-
-
-
-                id
-            }
-
-    val sessionId: Flow<String?> =
-        context.dataStore.data
-            .catch { exception ->
-
-                Log.e(TAG, "sessionId flow exception", exception)
-
-                if (exception is IOException) {
-                    emit(emptyPreferences())
-                } else {
-                    throw exception
-                }
-            }
-            .map { preferences ->
-
-                val id = preferences[SESSION_ID]
-
-
-
-                id
-            }
-
-    val deviceId: Flow<String?> =
-        context.dataStore.data
-            .catch { exception ->
-
-                Log.e(TAG, "deviceId flow exception", exception)
-
-                if (exception is IOException) {
-                    emit(emptyPreferences())
-                } else {
-                    throw exception
-                }
-            }
-            .map { preferences ->
-                val currentUserId = preferences[USER_ID]
-                val id = DeviceIdentityPreferences.read(
-                    preferences = preferences,
-                    userId = currentUserId
-                )
-
-                Log.v(
-                    TAG,
-                    "DeviceId requested. UserExists=${!currentUserId.isNullOrBlank()}, " +
-                            "deviceExists=${!id.isNullOrBlank()}"
-                )
-
-                id
-            }
+    val accessToken: Flow<String?> = safeData.map { cipher.open(it[ACCESS_TOKEN]) }
+    val refreshToken: Flow<String?> = safeData.map { cipher.open(it[REFRESH_TOKEN]) }
+    val userId: Flow<String?> = safeData.map { it[USER_ID] }
+    val sessionId: Flow<String?> = safeData.map { it[SESSION_ID] }
+    val deviceId: Flow<String?> = safeData.map { prefs ->
+        DeviceIdentityPreferences.read(prefs, prefs[USER_ID])
+    }
 
     suspend fun saveSession(
         accessToken: String,
@@ -167,347 +64,115 @@ class SessionManager(
         userId: String,
         sessionId: String
     ) {
-
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "saveSession() START")
-
-
-
-
-
-        try {
-
-            context.dataStore.edit { preferences: MutablePreferences ->
-
-                Log.d(TAG, "Writing ACCESS_TOKEN")
-                preferences[ACCESS_TOKEN] = accessToken
-
-                Log.d(TAG, "Writing REFRESH_TOKEN")
-                preferences[REFRESH_TOKEN] = refreshToken
-
-                Log.d(TAG, "Writing USER_ID")
-                preferences[USER_ID] = userId
-
-                Log.d(TAG, "Writing SESSION_ID")
-                preferences[SESSION_ID] = sessionId
-            }
-
-            Log.i(TAG, "Session saved successfully")
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "saveSession() FAILED", e)
-
-            throw e
-
-        } finally {
-
-            Log.d(TAG, "saveSession() END")
-            Log.d(TAG, "==========================================")
+        require(accessToken.isNotBlank() && refreshToken.isNotBlank())
+        require(userId.isNotBlank() && sessionId.isNotBlank())
+        val encryptedAccess = cipher.seal(accessToken)
+        val encryptedRefresh = cipher.seal(refreshToken)
+        store.edit { prefs ->
+            prefs[ACCESS_TOKEN] = encryptedAccess
+            prefs[REFRESH_TOKEN] = encryptedRefresh
+            prefs[USER_ID] = userId
+            prefs[SESSION_ID] = sessionId
         }
     }
 
     suspend fun clearSession() {
-
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "clearSession() START")
-
-        try {
-
-            context.dataStore.edit { preferences ->
-
-                Log.d(TAG, "Clearing authentication session")
-
-                clearAuthenticationSession(preferences)
-            }
-
-            Log.i(TAG, "Session cleared")
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "clearSession() FAILED", e)
-
-            throw e
-
-        } finally {
-
-            Log.d(TAG, "clearSession() END")
-            Log.d(TAG, "==========================================")
-        }
+        store.edit { prefs -> clearAuthenticationSession(prefs) }
     }
 
-    override suspend fun getAccessToken(): String? {
-
-        Log.d(TAG, "getAccessToken()")
-
-        return try {
-
-            val token = accessToken.first()
-
-            Log.d(
-                TAG,
-                "Access token exists=${!token.isNullOrBlank()}"
-            )
-
-            token
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "getAccessToken() FAILED", e)
-
-            null
-        }
-    }
+    override suspend fun getAccessToken(): String? = accessToken.first()
+    suspend fun getRefreshToken(): String? = refreshToken.first()
 
     suspend fun getSession(): Session {
-        Log.d(TAG, "getSession()")
-
-        val preferences = context.dataStore.data.first()
-
+        val prefs = safeData.first()
         return Session(
-
-            accessToken = preferences[ACCESS_TOKEN],
-
-            refreshToken = preferences[REFRESH_TOKEN],
-
-            userId = preferences[USER_ID],
-
-            sessionId = preferences[SESSION_ID],
-
-            deviceId = DeviceIdentityPreferences.read(
-                preferences = preferences,
-                userId = preferences[USER_ID]
-            )
+            accessToken = cipher.open(prefs[ACCESS_TOKEN]),
+            refreshToken = cipher.open(prefs[REFRESH_TOKEN]),
+            userId = prefs[USER_ID],
+            sessionId = prefs[SESSION_ID],
+            deviceId = DeviceIdentityPreferences.read(prefs, prefs[USER_ID])
         )
     }
 
     override suspend fun getOrCreateInstallationId(): String {
-        // Atomic edit prevents multiple concurrent startup calls from creating distinct ids.
-        // Never rotate this on logout, account changes, or registration recovery.
-        var installationId: String? = null
-        context.dataStore.edit { preferences ->
-            installationId = InstallationIdentityPreferences.getOrCreate(preferences)
-        }
-        return checkNotNull(installationId)
+        var id: String? = null
+        store.edit { prefs -> id = InstallationIdentityPreferences.getOrCreate(prefs) }
+        return checkNotNull(id)
     }
 
     override suspend fun getDeviceId(): String? {
-        Log.d(TAG, "getDeviceId()")
-
         return try {
-            var resolvedDeviceId: String? = null
-
-            context.dataStore.edit { preferences ->
-                val currentUserId = preferences[USER_ID]
-                    ?.trim()
-                    ?.takeIf(String::isNotEmpty)
-
-                if (currentUserId != null) {
-                    resolvedDeviceId = DeviceIdentityPreferences.migrateAndRead(
-                        preferences = preferences,
-                        userId = currentUserId
-                    )
-                }
+            var resolved: String? = null
+            store.edit { prefs ->
+                val id = prefs[USER_ID]?.trim()?.takeIf { it.isNotEmpty() }
+                if (id != null) resolved = DeviceIdentityPreferences.migrateAndRead(prefs, id)
             }
-
-            Log.d(
-                TAG,
-                "Device id exists=${!resolvedDeviceId.isNullOrBlank()}"
-            )
-            resolvedDeviceId
-        } catch (exception: CancellationException) {
-            throw exception
-        } catch (exception: Exception) {
-            Log.e(TAG, "getDeviceId() FAILED", exception)
+            resolved
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
             null
         }
     }
 
     override suspend fun saveDeviceId(deviceId: String) {
-        require(deviceId.isNotBlank()) { "Device id must not be blank" }
-
-        Log.d(TAG, "saveDeviceId()")
-
-        context.dataStore.edit { preferences ->
-            val currentUserId = requireCurrentUserId(preferences)
-            DeviceIdentityPreferences.save(
-                preferences = preferences,
-                userId = currentUserId,
-                deviceId = deviceId
-            )
+        require(deviceId.isNotBlank())
+        store.edit { prefs ->
+            val user = requireNotNull(prefs[USER_ID]?.trim()?.takeIf { it.isNotEmpty() }) {
+                "Cannot persist a device id without an authenticated user"
+            }
+            DeviceIdentityPreferences.save(prefs, user, deviceId)
         }
     }
 
     override suspend fun clearDeviceId() {
-        Log.d(TAG, "clearDeviceId()")
-
-        context.dataStore.edit { preferences ->
-            val currentUserId = preferences[USER_ID]
-                ?.trim()
-                ?.takeIf(String::isNotEmpty)
-                ?: return@edit
-
-            DeviceIdentityPreferences.clear(
-                preferences = preferences,
-                userId = currentUserId
-            )
+        store.edit { prefs ->
+            prefs[USER_ID]?.trim()?.takeIf { it.isNotEmpty() }?.let { user ->
+                DeviceIdentityPreferences.clear(prefs, user)
+            }
         }
     }
 
     override suspend fun getTokenSnapshot(): TokenSnapshot? {
-        Log.d(TAG, "getTokenSnapshot()")
+        val prefs = safeData.first()
+        val access = cipher.open(prefs[ACCESS_TOKEN])?.takeIf { it.isNotBlank() }
+        val refresh = cipher.open(prefs[REFRESH_TOKEN])?.takeIf { it.isNotBlank() }
+        return if (access != null && refresh != null) TokenSnapshot(access, refresh) else null
+    }
 
-        return try {
-            val preferences = context.dataStore.data.first()
-            val accessToken = preferences[ACCESS_TOKEN]
-            val refreshToken = preferences[REFRESH_TOKEN]
-
-            if (accessToken.isNullOrBlank() || refreshToken.isNullOrBlank()) {
-                Log.d(TAG, "Token snapshot unavailable")
-                null
-            } else {
-                Log.d(TAG, "Token snapshot available")
-                TokenSnapshot(
-                    accessToken = accessToken,
-                    refreshToken = refreshToken
-                )
-            }
-        } catch (exception: CancellationException) {
-            throw exception
-        } catch (exception: Exception) {
-            Log.e(TAG, "getTokenSnapshot() FAILED", exception)
-            null
+    override suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        require(accessToken.isNotBlank() && refreshToken.isNotBlank())
+        val encryptedAccess = cipher.seal(accessToken)
+        val encryptedRefresh = cipher.seal(refreshToken)
+        store.edit { prefs ->
+            prefs[ACCESS_TOKEN] = encryptedAccess
+            prefs[REFRESH_TOKEN] = encryptedRefresh
         }
     }
 
-    suspend fun getRefreshToken(): String? {
-        Log.d(TAG, "getRefreshToken()")
-
-        return try {
-            val token = refreshToken.first()
-
-            Log.d(
-                TAG,
-                "Refresh token exists=${!token.isNullOrBlank()}"
-            )
-
-            token
-        } catch (e: Exception) {
-
-            Log.e(TAG, "getRefreshToken() FAILED", e)
-
-            null
-        }
-    }
-
-    override suspend fun updateTokens(
-        accessToken: String,
-        refreshToken: String
-    ) {
-        require(accessToken.isNotBlank()) { "Access token must not be blank" }
-        require(refreshToken.isNotBlank()) { "Refresh token must not be blank" }
-
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "updateTokens() START")
-
-
-
-        try {
-
-            context.dataStore.edit { preferences ->
-
-                preferences[ACCESS_TOKEN] = accessToken
-                preferences[REFRESH_TOKEN] = refreshToken
-            }
-
-            Log.i(TAG, "Tokens updated successfully")
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "updateTokens() FAILED", e)
-            throw e
-
-        } finally {
-
-            Log.d(TAG, "updateTokens() END")
-            Log.d(TAG, "==========================================")
-        }
-    }
-
-    override suspend fun clearSessionIfMatches(
-        expected: TokenSnapshot
-    ): Boolean {
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "clearSessionIfMatches() START")
-
+    override suspend fun clearSessionIfMatches(expected: TokenSnapshot): Boolean {
+        migrateLegacyTokens()
         var cleared = false
-
-        try {
-            context.dataStore.edit { preferences ->
-                val currentAccessToken = preferences[ACCESS_TOKEN]
-                val currentRefreshToken = preferences[REFRESH_TOKEN]
-
-                if (
-                    currentAccessToken == expected.accessToken &&
-                    currentRefreshToken == expected.refreshToken
-                ) {
-                    clearAuthenticationSession(preferences)
-                    cleared = true
-                }
+        store.edit { prefs ->
+            val current = TokenSnapshot(
+                accessToken = cipher.open(prefs[ACCESS_TOKEN]).orEmpty(),
+                refreshToken = cipher.open(prefs[REFRESH_TOKEN]).orEmpty()
+            )
+            if (current == expected) {
+                clearAuthenticationSession(prefs)
+                cleared = true
             }
-
-            Log.i(TAG, "Session cleared after refresh rejection=$cleared")
-            return cleared
-        } catch (e: Exception) {
-            Log.e(TAG, "clearSessionIfMatches() FAILED", e)
-            throw e
-        } finally {
-            Log.d(TAG, "clearSessionIfMatches() END")
-            Log.d(TAG, "==========================================")
         }
+        return cleared
     }
 
-    private fun clearAuthenticationSession(
-        preferences: MutablePreferences
-    ) {
-        preferences.remove(ACCESS_TOKEN)
-        preferences.remove(REFRESH_TOKEN)
-        preferences.remove(USER_ID)
-        preferences.remove(SESSION_ID)
+    private fun clearAuthenticationSession(prefs: MutablePreferences) {
+        prefs.remove(ACCESS_TOKEN)
+        prefs.remove(REFRESH_TOKEN)
+        prefs.remove(USER_ID)
+        prefs.remove(SESSION_ID)
+        // Installation id + account-scoped server device ids survive logout by design.
     }
 
-    private fun requireCurrentUserId(
-        preferences: MutablePreferences
-    ): String = preferences[USER_ID]
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
-        ?: error("Cannot persist device id without an authenticated user")
-
-    suspend fun hasActiveSession(): Boolean {
-
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "hasActiveSession()")
-
-        return try {
-
-            val token = accessToken.first()
-
-            Log.d(TAG, "Token exists=${token != null}")
-            Log.d(TAG, "Token blank=${token.isNullOrBlank()}")
-
-            val active = !token.isNullOrBlank()
-
-            Log.d(TAG, "Active session=$active")
-            Log.d(TAG, "==========================================")
-
-            active
-
-        } catch (e: Exception) {
-
-            Log.e(TAG, "hasActiveSession() FAILED", e)
-            Log.d(TAG, "==========================================")
-
-            false
-        }
-    }
+    suspend fun hasActiveSession(): Boolean = !getAccessToken().isNullOrBlank()
 }

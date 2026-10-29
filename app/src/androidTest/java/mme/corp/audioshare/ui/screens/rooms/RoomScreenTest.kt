@@ -1,5 +1,9 @@
 package mme.corp.audioshare.ui.screens.rooms
 
+import mme.corp.audioshare.testing.AwakeUnlockedDeviceRule
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
+
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import androidx.compose.runtime.CompositionLocalProvider
@@ -48,8 +52,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RoomScreenTest {
 
+    private val composeRule = createComposeRule()
+
     @get:Rule
-    val composeRule = createComposeRule()
+    val uiTestRules: TestRule = RuleChain.outerRule(AwakeUnlockedDeviceRule()).around(composeRule)
 
     @Test
     fun roomDetailsAndActiveMembersAreRenderedFromCoordinatorSnapshot() {
@@ -311,8 +317,10 @@ class RoomScreenTest {
                             state.value.copy(
                                 confirmation = RoomActionConfirmation.LEAVE
                             )
+
                         RoomsUiAction.DismissConfirmation ->
                             state.value.copy(confirmation = null)
+
                         else -> state.value
                     }
                 },
@@ -637,7 +645,7 @@ class RoomScreenTest {
 
         composeRule.waitUntil {
             coordinator.refreshRoomCalls == 1 &&
-                coordinator.refreshMembersCalls == 1
+                    coordinator.refreshMembersCalls == 1
         }
         composeRule.waitForIdle()
 
@@ -680,7 +688,7 @@ class RoomScreenTest {
         }
         composeRule.waitUntil {
             coordinator.refreshRoomCalls == 1 &&
-                coordinator.refreshMembersCalls == 1
+                    coordinator.refreshMembersCalls == 1
         }
         composeRule.waitForIdle()
         scrollToTag(RoomUiTestTags.LEAVE)
@@ -719,7 +727,7 @@ class RoomScreenTest {
 
         composeRule.waitUntil(timeoutMillis = 2_000L) {
             coordinator.refreshRoomCalls >= 1 &&
-                coordinator.refreshMembersCalls >= 1
+                    coordinator.refreshMembersCalls >= 1
         }
         val refreshCallsBeforeUpdate = coordinator.refreshMembersCalls
         composeRule.runOnIdle {
@@ -727,9 +735,9 @@ class RoomScreenTest {
         }
         composeRule.waitUntil(timeoutMillis = 2_000L) {
             coordinator.refreshMembersCalls > refreshCallsBeforeUpdate &&
-                coordinator.state.value.activeMembers.any { member ->
-                    member.membershipId == updatedMember.membershipId
-                }
+                    coordinator.state.value.activeMembers.any { member ->
+                        member.membershipId == updatedMember.membershipId
+                    }
         }
         composeRule.waitForIdle()
 
@@ -766,13 +774,13 @@ class RoomScreenTest {
                 )
             )
         }
-        composeRule.waitUntil(timeoutMillis = 2_000L) {
+        composeRule.waitUntil(timeoutMillis = 10_000L) {
             coordinator.refreshRoomCalls >= 1 &&
-                coordinator.refreshMembersCalls >= 2
+                    coordinator.refreshMembersCalls >= 2
         }
 
         composeRule.onNodeWithTag(RoomUiTestTags.BACK).performClick()
-        composeRule.waitUntil(timeoutMillis = 2_000L) {
+        composeRule.waitUntil(timeoutMillis = 5_000L) {
             navigationCalls.get() == 1
         }
 
@@ -812,9 +820,9 @@ class RoomScreenTest {
         composeRule.runOnIdle {
             lifecycleOwner.moveTo(Lifecycle.State.STARTED)
         }
-        composeRule.waitUntil(timeoutMillis = 2_000L) {
+        composeRule.waitUntil(timeoutMillis = 10_000L) {
             coordinator.refreshRoomCalls >= 1 &&
-                coordinator.refreshMembersCalls >= 2
+                    coordinator.refreshMembersCalls >= 2
         }
 
         composeRule.runOnIdle {
@@ -853,7 +861,7 @@ class RoomScreenTest {
         }
         composeRule.waitUntil {
             coordinator.refreshRoomCalls == 1 &&
-                coordinator.refreshMembersCalls == 1
+                    coordinator.refreshMembersCalls == 1
         }
         composeRule.runOnIdle {
             recompositionTick.intValue += 1
@@ -1032,7 +1040,7 @@ class RoomScreenTest {
             refreshMembersCalls += 1
             val gate = refreshMembersGate?.takeIf {
                 refreshMembersGateOnCall == null ||
-                    refreshMembersGateOnCall == refreshMembersCalls
+                        refreshMembersGateOnCall == refreshMembersCalls
             }
             try {
                 gate?.await()

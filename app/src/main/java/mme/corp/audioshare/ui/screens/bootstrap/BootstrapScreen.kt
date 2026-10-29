@@ -38,6 +38,7 @@ fun BootstrapScreen(
     val viewModel: BootstrapViewModel = viewModel(
         factory = BootstrapViewModel.Factory(
             startupCoordinator = application.container.bootstrapStartupCoordinator,
+            onCurrentUser = { application.container.currentUser.value = it },
             startupRequest = BootstrapStartupRequest(
                 deviceName = Build.MODEL.takeIf { it.isNotBlank() },
                 manufacturer = Build.MANUFACTURER.takeIf { it.isNotBlank() },

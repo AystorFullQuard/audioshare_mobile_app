@@ -1,9 +1,9 @@
 package mme.corp.audioshare.ui.screens.login
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,233 +12,62 @@ import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.repository.AuthRepository
 import mme.corp.audioshare.exception.ApiException
 
-class LoginViewModel(
-    private val authRepository: AuthRepository
-) : ViewModel() {
+class LoginViewModel(private val authRepository: AuthRepository) : ViewModel() {
+    private val mutableUiState = MutableStateFlow(LoginUiState())
+    val uiState: StateFlow<LoginUiState> = mutableUiState.asStateFlow()
 
-    companion object {
-        private const val TAG = "LoginVM"
+    fun updateLogin(value: String) = mutableUiState.update {
+        it.copy(login = value.take(320), error = null)
     }
 
-    private val _uiState = MutableStateFlow(LoginUiState())
-
-    val uiState: StateFlow<LoginUiState> =
-        _uiState.asStateFlow()
-
-    init {
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "LoginViewModel created")
-    }
-
-    fun updateLogin(login: String) {
-
-        Log.d(TAG, "updateLogin()")
-
-        _uiState.update {
-            it.copy(login = login)
-        }
-
-        Log.d(TAG, "Login updated")
-    }
-
-    fun updatePassword(password: String) {
-
-        Log.d(TAG, "updatePassword()")
-
-        _uiState.update {
-            it.copy(password = password)
-        }
-
-        Log.d(TAG, "Password updated")
-    }
-
-    fun clearError() {
-
-        Log.d(TAG, "clearError()")
-
-        _uiState.update {
-            it.copy(error = null)
-        }
-    }
-
-    fun logout() {
-
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "Logout requested")
-
-        viewModelScope.launch {
-
-            try {
-
-                Log.d(TAG, "Calling AuthRepository.logout()")
-
-                val result = authRepository.logout()
-
-
-                _uiState.value = LoginUiState()
-
-                Log.d(TAG, "UI reset after logout")
-
-            } catch (e: Exception) {
-
-                Log.e(TAG, "Logout crashed", e)
-
-                _uiState.update {
-                    it.copy(error = e.message ?: "Logout failed")
-                }
-            }
-        }
+    fun updatePassword(value: String) = mutableUiState.update {
+        it.copy(password = value, error = null)
     }
 
     fun login() {
-
-        val state = _uiState.value
-
-        Log.d(TAG, "==========================================")
-        Log.d(TAG, "LOGIN START")
-
-        if (state.login.isBlank()) {
-
-            Log.w(TAG, "Validation failed: login is empty")
-
-            _uiState.update {
-                it.copy(error = "Please enter your login.")
-            }
-
+        val state = mutableUiState.value
+        if (state.isLoading || state.isLoggedIn) return
+        if (state.login.isBlank() || state.password.isBlank()) {
+            mutableUiState.update { it.copy(error = "Enter your login and password.") }
             return
         }
-
-        if (state.password.isBlank()) {
-
-            Log.w(TAG, "Validation failed: password is empty")
-
-            _uiState.update {
-                it.copy(error = "Please enter your password.")
-            }
-
-            return
-        }
-
         viewModelScope.launch {
-
+            mutableUiState.update { it.copy(isLoading = true, error = null) }
             try {
-
-                Log.d(TAG, "Setting loading=true")
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = true,
-                        error = null
-                    )
-                }
-
-                Log.d(TAG, "Calling AuthRepository.login()")
-
-                val result = authRepository.login(
-                    login = state.login,
-                    password = state.password
-                )
-
-                Log.d(TAG, "Repository returned")
-
-                result.onSuccess {
-
-                    Log.i(TAG, "LOGIN SUCCESS")
-
-                    Log.d(TAG, "Updating UI state")
-
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isLoggedIn = true
-                        )
-                    }
-
-                    Log.i(TAG, "UI updated successfully")
-                    Log.i(TAG, "isLoggedIn = true")
-                }
-
-                result.onFailure { throwable ->
-
-                    Log.e(TAG, "==========================================")
-                    Log.e(TAG, "Exception = ${throwable::class.simpleName}")
-
-                    val errorMessage = when (throwable) {
-
-                        is ApiException -> {
-
-
-                            throwable.apiError.displayMessage()
-                        }
-
-                        else -> {
-
-
-
-                            throwable.message ?: "Unknown error"
+                authRepository.login(state.login.trim(), state.password)
+                    .onSuccess {
+                        mutableUiState.update { current ->
+                            current.copy(isLoading = false, isLoggedIn = true, password = "")
                         }
                     }
-
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            error = errorMessage
-                        )
+                    .onFailure { failure ->
+                        mutableUiState.update { current ->
+                            current.copy(
+                                isLoading = false, error = when (failure) {
+                                    is ApiException -> failure.apiError.displayMessage()
+                                    else -> "Login failed. Check your credentials and server connection."
+                                }
+                            )
+                        }
                     }
-
-                    Log.d(TAG, "UI updated with error")
-                }
-
-            } catch (e: Exception) {
-
-                Log.e(TAG, "==========================================")
-                Log.e(TAG, "UNEXPECTED EXCEPTION INSIDE LOGIN()", e)
-
-                _uiState.update {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableUiState.update {
                     it.copy(
                         isLoading = false,
-                        error = e.message ?: "Unexpected error"
+                        error = "Login failed. Check your credentials and server connection."
                     )
                 }
-
-                Log.d(TAG, "Recovered from exception")
-            } finally {
-
-                Log.d(TAG, "LOGIN FLOW FINISHED")
-                Log.d(TAG, "==========================================")
             }
         }
     }
 
-    class Factory(
-        private val authRepository: AuthRepository
-    ) : ViewModelProvider.Factory {
-
+    class Factory(private val repository: AuthRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(
-            modelClass: Class<T>
-        ): T {
-
-            Log.d(TAG, "Factory.create()")
-            Log.d(TAG, "Requested ViewModel = ${modelClass.name}")
-
-            if (modelClass.isAssignableFrom(LoginViewModel::class.java)) {
-
-                Log.d(TAG, "Creating LoginViewModel")
-
-                return LoginViewModel(authRepository) as T
-            }
-
-            Log.e(TAG, "Unknown ViewModel requested: ${modelClass.name}")
-
-            throw IllegalArgumentException(
-                "Unknown ViewModel class: ${modelClass.name}"
-            )
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            require(modelClass.isAssignableFrom(LoginViewModel::class.java))
+            return LoginViewModel(repository) as T
         }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        Log.d(TAG, "LoginViewModel destroyed")
     }
 }

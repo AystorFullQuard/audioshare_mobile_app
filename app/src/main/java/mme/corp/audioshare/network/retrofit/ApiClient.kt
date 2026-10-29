@@ -20,6 +20,7 @@ object ApiClient {
         // Later: scoped redacted diagnostics via OBS/LOG, never a BODY logger.
         val csrfCookies = CsrfCookieJar(baseUrl.toHttpUrl())
         val sharedClient = OkHttpClient.Builder()
+            .addInterceptor(ApiOriginGuard(baseUrl.toHttpUrl()))
             .cookieJar(csrfCookies)
             .followRedirects(false)
             .followSslRedirects(false)
@@ -37,9 +38,11 @@ object ApiClient {
 
         // Refresh requests have no bearer token, but they still require CSRF.
         val refreshClient = createTokenRefreshClient(
-            buildRetrofit(sharedClient.newBuilder()
-                .addInterceptor(csrfInterceptor)
-                .build(), baseUrl)
+            buildRetrofit(
+                sharedClient.newBuilder()
+                    .addInterceptor(csrfInterceptor)
+                    .build(), baseUrl
+            )
         )
 
         val authenticatedClient = sharedClient.newBuilder()

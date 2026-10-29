@@ -1,7 +1,10 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Debug builds only: allow local Docker Compose testing over LAN HTTP.
-     ApiEndpointPolicy independently rejects public-Internet HTTP destinations.
-     NEVER include this resource in release variants. -->
+<?xml version="1.0" encoding="utf-8"?><!-- Debug HTTP is limited to explicit developer endpoints; never ship as release.
+     Add a specific LAN host here for physical-device Docker testing; no subnet wildcard.
+     The Kotlin ApiEndpointPolicy separately restricts debug HTTP to private targets. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="IPV4">192.168.110.77</domain>
+        <domain includeSubdomains="LOCALHOST">localhost</domain>
+    </domain-config>
 </network-security-config>

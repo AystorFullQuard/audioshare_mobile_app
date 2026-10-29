@@ -23,10 +23,12 @@ internal object ApiEndpointPolicy {
 
         val scheme = uri.scheme?.lowercase()
         val host = uri.host?.lowercase()
-        require(!host.isNullOrBlank() && uri.userInfo == null &&
-                uri.rawQuery == null && uri.rawFragment == null &&
-                (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
-                (uri.port in -1..65535) && uri.port != 0) {
+        require(
+            !host.isNullOrBlank() && uri.userInfo == null &&
+                    uri.rawQuery == null && uri.rawFragment == null &&
+                    (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
+                    (uri.port in -1..65535) && uri.port != 0
+        ) {
             "ServerRelay API URL must be a bare origin without credentials, path, query or fragment"
         }
 
@@ -35,6 +37,7 @@ internal object ApiEndpointPolicy {
             "http" -> require(isDebug && isLocalDevelopmentHost(host)) {
                 "Cleartext ServerRelay API is allowed only for private debug LAN endpoints"
             }
+
             else -> throw IllegalArgumentException("ServerRelay API must use http or https")
         }
         // Normalize the protocol spelling so the transport and endpoint tests share one origin.
@@ -43,7 +46,7 @@ internal object ApiEndpointPolicy {
     }
 
     private fun isLocalDevelopmentHost(host: String): Boolean {
-        if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) {
+        if (host == "localhost") {
             return true
         }
         if (host == "[::1]") return true

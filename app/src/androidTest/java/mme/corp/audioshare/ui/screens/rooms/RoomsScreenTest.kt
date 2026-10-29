@@ -1,5 +1,9 @@
 package mme.corp.audioshare.ui.screens.rooms
 
+import mme.corp.audioshare.testing.AwakeUnlockedDeviceRule
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
+
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import androidx.compose.runtime.key
@@ -37,8 +41,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RoomsScreenTest {
 
+    private val composeRule = createComposeRule()
+
     @get:Rule
-    val composeRule = createComposeRule()
+    val uiTestRules: TestRule = RuleChain.outerRule(AwakeUnlockedDeviceRule()).around(composeRule)
 
     @Test
     fun emptyStateIsRendered() {

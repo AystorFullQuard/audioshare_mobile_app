@@ -1,5 +1,9 @@
 package mme.corp.audioshare.ui.screens.navigation
 
+import mme.corp.audioshare.testing.AwakeUnlockedDeviceRule
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
+
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -32,8 +36,10 @@ import java.io.IOException
 @RunWith(AndroidJUnit4::class)
 class RoomsNavigationTest {
 
+    private val composeRule = createComposeRule()
+
     @get:Rule
-    val composeRule = createComposeRule()
+    val uiTestRules: TestRule = RuleChain.outerRule(AwakeUnlockedDeviceRule()).around(composeRule)
 
     @Test
     fun listOpenUsesOneCoordinatorRequestAndRestoresRoomsBackStack() {
