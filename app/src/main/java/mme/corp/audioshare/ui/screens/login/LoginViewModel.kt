@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.data.repository.AuthRepository
-import mme.corp.audioshare.exception.ApiException
 
 class LoginViewModel(private val authRepository: AuthRepository) : ViewModel() {
     private val mutableUiState = MutableStateFlow(LoginUiState())
@@ -43,10 +42,8 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel() {
                     .onFailure { failure ->
                         mutableUiState.update { current ->
                             current.copy(
-                                isLoading = false, error = when (failure) {
-                                    is ApiException -> failure.apiError.displayMessage()
-                                    else -> "Login failed. Check your credentials and server connection."
-                                }
+                                isLoading = false,
+                                error = LoginFailureMessage.forFailure(failure)
                             )
                         }
                     }
@@ -56,7 +53,7 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel() {
                 mutableUiState.update {
                     it.copy(
                         isLoading = false,
-                        error = "Login failed. Check your credentials and server connection."
+                        error = "Login failed unexpectedly. Check the configured server and try again."
                     )
                 }
             }

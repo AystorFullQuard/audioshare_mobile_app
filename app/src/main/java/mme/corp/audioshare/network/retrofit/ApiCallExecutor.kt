@@ -8,6 +8,9 @@ import retrofit2.Response
 
 private val errorGson = Gson()
 
+/** Status-only fallback; arbitrary response bodies must not reach the UI or diagnostic logs. */
+class HttpStatusException(val statusCode: Int) : Exception("HTTP $statusCode")
+
 internal suspend fun <T : Any> executeApiCall(
     emptyBodyMessage: String,
     call: suspend () -> Response<T>
@@ -92,8 +95,6 @@ private fun Response<*>.toApiException(): Exception {
             apiError = parsedError
         )
     } else {
-        IllegalStateException(
-            rawError ?: "HTTP ${code()} ${message()}"
-        )
+        HttpStatusException(code())
     }
 }

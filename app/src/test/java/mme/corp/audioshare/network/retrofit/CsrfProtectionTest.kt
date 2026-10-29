@@ -42,7 +42,7 @@ class CsrfProtectionTest {
     }
 
     @Test
-    fun publicPostUsesOneProofAndCookieForRepeatedWrites() {
+    fun authPostFetchesFreshProofAndClearsCookieAfterEachRequest() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse =
                 if (request.path == "/api/v1/auth/csrf") {
@@ -68,8 +68,8 @@ class CsrfProtectionTest {
                 assertEquals(200, it.code)
             }
         }
-        // One CSRF fetch, two writes. Neither JWT nor tokens are logged/stored on disk.
-        assertEquals(3, server.requestCount)
+        // Every auth write fetches its own proof; no token/cookie survives the transaction.
+        assertEquals(4, server.requestCount)
     }
 
     @Test
@@ -105,10 +105,41 @@ class CsrfProtectionTest {
             Request.Builder().url(server.url("/api/v1/devices/register"))
                 .post("{}".toRequestBody()).build()
         ).execute().close()
-        assertEquals(3, server.requestCount)
+        assertEquals(4, server.requestCount)
         assertEquals("/api/v1/auth/csrf", server.takeRequest().path)
         assertNull(server.takeRequest().getHeader("Authorization"))
+        assertEquals("/api/v1/auth/csrf", server.takeRequest().path)
         assertEquals("Bearer access-jwt", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun authTransactionDiscardsCookieAndFetchesFreshProofAfterProtectedWrite() {
+        var fetched = 0
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                if (request.path == "/api/v1/auth/csrf") {
+                    fetched++
+                    return MockResponse().setResponseCode(200)
+                        .addHeader("Set-Cookie", "XSRF-TOKEN=cookie-$fetched; Path=/; HttpOnly")
+                        .setBody("""{"headerName":"X-XSRF-TOKEN","token":"proof-$fetched"}""")
+                }
+                assertEquals("proof-$fetched", request.getHeader("X-XSRF-TOKEN"))
+                assertEquals("XSRF-TOKEN=cookie-$fetched", request.getHeader("Cookie"))
+                return MockResponse().setResponseCode(204)
+            }
+        }
+        val (bare, client) = clients()
+        client.newCall(
+            Request.Builder().url(server.url("/api/v1/devices/register"))
+                .post("{}".toRequestBody()).build()
+        ).execute().close()
+        client.newCall(
+            Request.Builder().url(server.url("/api/v1/auth/login"))
+                .post("{}".toRequestBody()).build()
+        ).execute().close()
+        assertTrue(bare.cookieJar.loadForRequest(server.url("/api/v1/auth/login")).isEmpty())
+        assertEquals(2, fetched)
+        assertEquals(4, server.requestCount)
     }
 
     @Test

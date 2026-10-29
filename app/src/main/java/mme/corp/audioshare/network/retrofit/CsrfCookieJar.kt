@@ -31,6 +31,11 @@ internal class CsrfCookieJar(private val apiOrigin: HttpUrl) : CookieJar {
             emptyList()
         }
 
+    @Synchronized
+    fun clear() {
+        csrfCookie = null
+    }
+
     private fun sameOrigin(url: HttpUrl): Boolean =
         url.scheme == apiOrigin.scheme &&
                 url.host == apiOrigin.host && url.port == apiOrigin.port
@@ -54,7 +59,9 @@ internal class CsrfProofProvider(
 
     fun proof(): CsrfProof = synchronized(lock) {
         cached?.let { proof ->
-            if (cookies.loadForRequest(baseUrl).isNotEmpty()) return@synchronized proof
+            if (cookies.loadForRequest(baseUrl.resolve("/api/v1/auth/csrf")!!)
+                    .isNotEmpty()
+            ) return@synchronized proof
         }
         val csrfUrl = baseUrl.resolve("/api/v1/auth/csrf")
             ?: throw IOException("Invalid CSRF endpoint")
@@ -88,7 +95,10 @@ internal class CsrfProofProvider(
         }
     }
 
-    fun invalidate() = synchronized(lock) { cached = null }
+    fun invalidate() = synchronized(lock) {
+        cached = null
+        cookies.clear()
+    }
 }
 
 /**
@@ -96,20 +106,46 @@ internal class CsrfProofProvider(
  * GET /csrf uses the bare bootstrap client, avoiding recursion and leaked JWTs.
  */
 internal class CsrfInterceptor(private val proofProvider: CsrfProofProvider) : Interceptor {
+    // Auth operations are serialized so one response cannot clear another auth request's proof.
+    private val authLock = Any()
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         if (!needsCsrf(request)) return chain.proceed(request)
-        val proof = proofProvider.proof()
-        val response = chain.proceed(
-            request.newBuilder().header(proof.headerName, proof.token).build()
-        )
-        if (response.code == 403 &&
-            response.peekBody(4096).string().contains("CSRF_TOKEN_INVALID")
-        ) {
-            // Do not replay writes implicitly. The next request negotiates a fresh proof.
-            proofProvider.invalidate()
+        if (request.url.encodedPath in AUTH_PATHS) {
+            return synchronized(authLock) {
+                proofProvider.invalidate() // fresh handshake for every auth transaction
+                proceedWithProof(chain, clearAfter = true)
+            }
         }
-        return response
+        return proceedWithProof(chain, clearAfter = false)
+    }
+
+    private fun proceedWithProof(chain: Interceptor.Chain, clearAfter: Boolean): Response {
+        try {
+            val proof = proofProvider.proof() // GET /auth/csrf before sending credentials
+            val request = chain.request().newBuilder()
+                .header(proof.headerName, proof.token)
+                .header("Cache-Control", "no-store")
+                .build()
+            val response = chain.proceed(request)
+            if (response.code == 403 &&
+                response.peekBody(4096).string().contains("CSRF_TOKEN_INVALID")
+            ) {
+                proofProvider.invalidate() // no automatic replay of unsafe requests
+            }
+            return response
+        } finally {
+            if (clearAfter) proofProvider.invalidate() // drop ephemeral proof AND cookie
+        }
+    }
+
+    private companion object {
+        val AUTH_PATHS = setOf(
+            "/api/v1/auth/login", "/api/v1/auth/register",
+            "/api/v1/auth/refresh", "/api/v1/auth/logout",
+            "/api/v1/auth/dev-login", "/api/v1/auth/dev-register"
+        )
     }
 
     private fun needsCsrf(request: Request): Boolean =

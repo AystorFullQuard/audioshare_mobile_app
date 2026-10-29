@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,14 +37,15 @@ import mme.corp.audioshare.AudioShareApplication
 import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.ui.screens.home.uiBlocks.RoomsEntryButton
 
-private val Background = Color(0xFF0A0E19)
-private val Panel = Color(0xFF191E30)
-private val PanelBorder = Color(0xFF303750)
-private val TextMain = Color(0xFFE9E9FA)
-private val TextMuted = Color(0xFFABB4CE)
-private val Accent = Color(0xFF7566F1)
-private val AccentBlue = Color(0xFF4A67D7)
-private val AccentGradient = Brush.horizontalGradient(listOf(Accent, Color(0xFF4D59CE)))
+private val LocalHomeAppearance = staticCompositionLocalOf { HomeAppearance.DARK }
+private val Background @Composable get() = LocalHomeAppearance.current.background
+private val Panel @Composable get() = LocalHomeAppearance.current.panel
+private val PanelBorder @Composable get() = LocalHomeAppearance.current.panelBorder
+private val TextMain @Composable get() = LocalHomeAppearance.current.text
+private val TextMuted @Composable get() = LocalHomeAppearance.current.muted
+private val Accent @Composable get() = LocalHomeAppearance.current.accent
+private val AccentBlue @Composable get() = LocalHomeAppearance.current.accentSecondary
+private val AccentGradient @Composable get() = LocalHomeAppearance.current.accentGradient
 
 private enum class MediaChoice { AUDIO, VIDEO }
 private enum class HostChoice { ONLINE, LOCAL }
@@ -105,7 +107,8 @@ fun HomeScreen(onLogin: () -> Unit = {}, onNavigateRooms: () -> Unit = {}) {
         connectionError = if (ready) null else connectionError,
         onRetry = { retryNumber++ },
         onAvatarClick = onLogin,
-        onNavigateRooms = onNavigateRooms
+        onNavigateRooms = onNavigateRooms,
+        appearance = HomeAppearance.from(currentUser?.settings)
     )
 }
 
@@ -119,7 +122,8 @@ internal fun SvReHome(
     onAvatarClick: () -> Unit = {},
     isConnecting: Boolean = false,
     connectionError: String? = null,
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    appearance: HomeAppearance = HomeAppearance.DARK
 ) {
     var media by remember { mutableStateOf(MediaChoice.AUDIO) }
     var host by remember { mutableStateOf(HostChoice.ONLINE) }
@@ -129,90 +133,93 @@ internal fun SvReHome(
         scope.launch { snackbar.showSnackbar(message) }
     }
 
-    Box(Modifier
-        .fillMaxSize()
-        .background(Background)) {
-        // Subtle ambient gradient behind the fixed bottom waves.
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(Color(0x364E5BCE), Color.Transparent),
-                    center = Offset(size.width * .52f, size.height * .25f),
-                    radius = size.width * .9f
-                ),
-                radius = size.width * .9f,
-                center = Offset(size.width * .52f, size.height * .25f)
-            )
-        }
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 100.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            BrandHeader(signedIn, avatarInitial) {
-                if (!signedIn) onAvatarClick() else notice("You are signed in.")
-            }
-            if (isConnecting) {
-                Text(
-                    "Connecting to ServerRelay and loading your rooms…",
-                    color = TextMuted,
-                    fontSize = 13.sp
+    CompositionLocalProvider(LocalHomeAppearance provides appearance) {
+        val ambientColor = appearance.ambient
+        Box(Modifier
+            .fillMaxSize()
+            .background(Background)) {
+            // Subtle ambient gradient behind the fixed bottom waves.
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(ambientColor, Color.Transparent),
+                        center = Offset(size.width * .52f, size.height * .25f),
+                        radius = size.width * .9f
+                    ),
+                    radius = size.width * .9f,
+                    center = Offset(size.width * .52f, size.height * .25f)
                 )
             }
-            if (connectionError != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 100.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                BrandHeader(signedIn, avatarInitial) {
+                    if (!signedIn) onAvatarClick() else notice("You are signed in.")
+                }
+                if (isConnecting) {
                     Text(
-                        connectionError,
-                        modifier = Modifier.weight(1f),
+                        "Connecting to ServerRelay and loading your rooms…",
                         color = TextMuted,
-                        fontSize = 12.sp
+                        fontSize = 13.sp
                     )
-                    TextButton(onClick = onRetry) { Text("Retry", color = Accent) }
                 }
-            }
-            StartSharePanel(
-                host = host, media = media,
-                onHost = { selected ->
-                    host = selected
-                    when {
-                        media == MediaChoice.VIDEO -> notice("Video sharing is planned for a later release.")
-                        selected == HostChoice.LOCAL -> notice("Secure nearby hosting is not yet available.")
-                        roomsReady && !isConnecting && connectionError == null -> onNavigateRooms() // online room management
-                        else -> notice("Sign in and connect to manage rooms.")
+                if (connectionError != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            connectionError,
+                            modifier = Modifier.weight(1f),
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                        TextButton(onClick = onRetry) { Text("Retry", color = Accent) }
                     }
-                },
-                onMedia = { media = it }
-            )
-            JoinPanel(
-                onCode = {
-                    if (roomsReady && !isConnecting && connectionError == null) onNavigateRooms() else notice(
-                        "Connect your account to join server rooms."
-                    )
-                },
-                onNearby = { notice("Secure nearby discovery is planned for the local sharing stage.") }
-            )
-            MyRoomsPanel(
-                rooms = rooms,
-                onNavigateRooms = {
-                    if (roomsReady && !isConnecting && connectionError == null) onNavigateRooms() else notice(
-                        "Sign in and connect to view your rooms."
-                    )
                 }
+                StartSharePanel(
+                    host = host, media = media,
+                    onHost = { selected ->
+                        host = selected
+                        when {
+                            media == MediaChoice.VIDEO -> notice("Video sharing is planned for a later release.")
+                            selected == HostChoice.LOCAL -> notice("Secure nearby hosting is not yet available.")
+                            roomsReady && !isConnecting && connectionError == null -> onNavigateRooms() // online room management
+                            else -> notice("Sign in and connect to manage rooms.")
+                        }
+                    },
+                    onMedia = { media = it }
+                )
+                JoinPanel(
+                    onCode = {
+                        if (roomsReady && !isConnecting && connectionError == null) onNavigateRooms() else notice(
+                            "Connect your account to join server rooms."
+                        )
+                    },
+                    onNearby = { notice("Secure nearby discovery is planned for the local sharing stage.") }
+                )
+                MyRoomsPanel(
+                    rooms = rooms,
+                    onNavigateRooms = {
+                        if (roomsReady && !isConnecting && connectionError == null) onNavigateRooms() else notice(
+                            "Sign in and connect to view your rooms."
+                        )
+                    }
+                )
+                RecentPanel()
+            }
+            FooterWaves(Modifier
+                .fillMaxWidth()
+                .height(88.dp)
+                .align(Alignment.BottomCenter))
+            SnackbarHost(
+                hostState = snackbar,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 76.dp)
             )
-            RecentPanel()
         }
-        FooterWaves(Modifier
-            .fillMaxWidth()
-            .height(88.dp)
-            .align(Alignment.BottomCenter))
-        SnackbarHost(
-            hostState = snackbar,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 76.dp)
-        )
     }
 }
 
@@ -235,7 +242,7 @@ private fun BrandHeader(signedIn: Boolean, avatarInitial: String?, onAvatarClick
                     .border(2.dp, if (signedIn) Accent else PanelBorder, CircleShape)
                     .padding(4.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF292C48)),
+                    .background(LocalHomeAppearance.current.avatarSurface),
                 contentAlignment = Alignment.Center
             ) {
                 if (signedIn && !avatarInitial.isNullOrBlank()) {
@@ -252,7 +259,7 @@ private fun BrandHeader(signedIn: Boolean, avatarInitial: String?, onAvatarClick
                     Modifier
                         .size(12.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF5FDCAB))
+                        .background(LocalHomeAppearance.current.online)
                         .border(2.dp, Background, CircleShape)
                 )
             }
@@ -262,10 +269,11 @@ private fun BrandHeader(signedIn: Boolean, avatarInitial: String?, onAvatarClick
 
 @Composable
 private fun LoginAvatarGlyph(modifier: Modifier = Modifier) {
+    val iconColor = TextMain
     Canvas(modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
         drawCircle(
-            TextMain, radius = size.width * .17f,
+            iconColor, radius = size.width * .17f,
             center = Offset(center.x, size.height * .33f)
         )
         val shoulders = Path().apply {
@@ -276,18 +284,20 @@ private fun LoginAvatarGlyph(modifier: Modifier = Modifier) {
             )
             close()
         }
-        drawPath(shoulders, TextMain)
+        drawPath(shoulders, iconColor)
     }
 }
 
 @Composable
 private fun WaveformLogo(modifier: Modifier = Modifier) {
+    val secondary = AccentBlue
+    val logoTop = LocalHomeAppearance.current.logoTop
     Canvas(modifier) {
         val heights = listOf(.24f, .55f, 1f, .6f, .3f)
         heights.forEachIndexed { index, height ->
             val x = size.width * (.13f + index * .18f)
             drawLine(
-                brush = Brush.verticalGradient(listOf(Color(0xFFBE8DF9), AccentBlue)),
+                brush = Brush.verticalGradient(listOf(logoTop, secondary)),
                 start = Offset(x, (size.height * (1 - height)) / 2),
                 end = Offset(x, (size.height * (1 + height)) / 2),
                 strokeWidth = size.width * .105f,
@@ -304,7 +314,7 @@ private fun PanelContent(content: @Composable ColumnScope.() -> Unit) {
             .fillMaxWidth()
             .border(1.dp, PanelBorder, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFF1C2033), Panel)))
+            .background(Brush.verticalGradient(listOf(LocalHomeAppearance.current.panelTop, Panel)))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content
@@ -370,37 +380,64 @@ private fun HostTile(
     val shape = RoundedCornerShape(22.dp)
     Column(
         modifier
+            .height(190.dp)
             .clip(shape)
             .background(
                 if (selected) Brush.verticalGradient(
                     listOf(
-                        Color(0xFF4C52BA),
-                        Color(0xFF2D3480)
+                        LocalHomeAppearance.current.activeTop,
+                        LocalHomeAppearance.current.activeBottom
                     )
-                ) else Brush.verticalGradient(listOf(Color(0xFF24293B), Panel))
+                )
+                else Brush.verticalGradient(
+                    listOf(
+                        LocalHomeAppearance.current.inactiveTop,
+                        LocalHomeAppearance.current.inactiveBottom
+                    )
+                )
             )
             .border(1.dp, if (selected) Accent else PanelBorder, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        Text(symbol, color = if (selected) Color(0xFFD9D8FF) else TextMuted, fontSize = 43.sp)
-        Text(title, color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         Text(
-            subtitle, color = if (selected) Color(0xFFD2D4F9) else TextMuted,
-            fontSize = 12.sp, lineHeight = 16.sp, minLines = 2
+            symbol,
+            color = if (selected) LocalHomeAppearance.current.selectedIcon else TextMuted,
+            fontSize = 36.sp,
+            maxLines = 1
         )
+        Text(
+            title,
+            color = TextMain,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            minLines = 2,
+            lineHeight = 19.sp,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            subtitle,
+            color = if (selected) LocalHomeAppearance.current.selectedSubtitle else TextMuted,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.weight(1f))
         Box(
             Modifier
                 .align(Alignment.End)
                 .size(31.dp)
                 .clip(CircleShape)
-                .background(if (selected) Color(0xFFDCE1FF) else Color(0xFF343A50)),
+                .background(if (selected) LocalHomeAppearance.current.arrowLight else LocalHomeAppearance.current.arrowSurface),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 "›", fontSize = 25.sp,
-                color = if (selected) Color(0xFF3945A2) else TextMain
+                color = if (selected) LocalHomeAppearance.current.arrowText else TextMain
             )
         }
     }
@@ -436,7 +473,7 @@ private fun MediaPill(label: String, selected: Boolean, modifier: Modifier, onCl
 private fun JoinPanel(onCode: () -> Unit, onNearby: () -> Unit) {
     PanelContent {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("◉", color = Color(0xFFA6A6FF), fontSize = 26.sp)
+            Text("◉", color = LocalHomeAppearance.current.sectionIcon, fontSize = 26.sp)
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(
@@ -466,13 +503,18 @@ private fun ActionTile(symbol: String, label: String, modifier: Modifier, onClic
             .heightIn(min = 66.dp)
             .border(1.dp, PanelBorder, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF242A3B))
+            .background(LocalHomeAppearance.current.actionSurface)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(symbol, color = Color(0xFFD8DCFF), fontWeight = FontWeight.Bold, fontSize = 23.sp)
+        Text(
+            symbol,
+            color = LocalHomeAppearance.current.selectedIcon,
+            fontWeight = FontWeight.Bold,
+            fontSize = 23.sp
+        )
         Text(
             label, color = TextMain, fontSize = 12.sp, maxLines = 2,
             modifier = Modifier.weight(1f), lineHeight = 15.sp
@@ -485,7 +527,7 @@ private fun ActionTile(symbol: String, label: String, modifier: Modifier, onClic
 private fun MyRoomsPanel(rooms: List<Room>, onNavigateRooms: () -> Unit) {
     PanelContent {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("⌂", color = Color(0xFFB0AEFF), fontSize = 29.sp)
+            Text("⌂", color = LocalHomeAppearance.current.sectionIcon, fontSize = 29.sp)
             Spacer(Modifier.width(10.dp))
             Text(
                 "My Rooms", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 19.sp,
@@ -505,7 +547,7 @@ private fun MyRoomsPanel(rooms: List<Room>, onNavigateRooms: () -> Unit) {
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(13.dp))
-                        .background(Color(0xFF24293C))
+                        .background(LocalHomeAppearance.current.roomSurface)
                         .clickable(onClick = onNavigateRooms)
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -550,6 +592,7 @@ private fun RecentPanel() {
 
 @Composable
 private fun FooterWaves(modifier: Modifier) {
+    val appearance = LocalHomeAppearance.current
     Canvas(modifier) {
         val back = Path().apply {
             moveTo(0f, size.height * .35f)
@@ -563,7 +606,7 @@ private fun FooterWaves(modifier: Modifier) {
             )
             lineTo(size.width, size.height); lineTo(0f, size.height); close()
         }
-        drawPath(back, Brush.verticalGradient(listOf(Color(0xFF4448A5), Color(0xFF272A69))))
+        drawPath(back, Brush.verticalGradient(listOf(appearance.waveTop, appearance.waveBottom)))
         val front = Path().apply {
             moveTo(0f, size.height * .58f)
             cubicTo(
@@ -576,6 +619,9 @@ private fun FooterWaves(modifier: Modifier) {
             )
             lineTo(size.width, size.height); lineTo(0f, size.height); close()
         }
-        drawPath(front, Brush.verticalGradient(listOf(Color(0xFF323C93), Color(0xFF1A2251))))
+        drawPath(
+            front,
+            Brush.verticalGradient(listOf(appearance.accentSecondary, appearance.waveBottom))
+        )
     }
 }

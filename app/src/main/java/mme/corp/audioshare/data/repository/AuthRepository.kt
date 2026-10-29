@@ -18,7 +18,8 @@ class AuthRepository(
     private val presenceRuntimeController: PresenceRuntimeController =
         PresenceRuntimeController.NO_OP,
     private val roomSessionRuntimeController: RoomSessionRuntimeController =
-        RoomSessionRuntimeController.NO_OP
+        RoomSessionRuntimeController.NO_OP,
+    private val disconnectSignaling: () -> Unit = {}
 ) {
     suspend fun login(login: String, password: String): Result<LoginResponse> =
         persistResponse {
@@ -65,6 +66,7 @@ class AuthRepository(
     suspend fun logout(): Result<Unit> {
         presenceRuntimeController.stop()
         roomSessionRuntimeController.clearForLogout()
+        disconnectSignaling()
         try {
             // Logout is best-effort over the network; never retain the local token for retry.
             authApi.logout()

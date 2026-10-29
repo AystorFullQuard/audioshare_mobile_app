@@ -9,6 +9,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import mme.corp.audioshare.BuildConfig
+import mme.corp.audioshare.data.api.CallsApi
+import mme.corp.audioshare.data.api.InvitesApi
+import mme.corp.audioshare.data.repository.CallRepository
+import mme.corp.audioshare.data.repository.InviteRepository
+import mme.corp.audioshare.network.realtime.RealtimeSignalingClient
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.api.DevicesApi
@@ -63,6 +68,12 @@ class AppContainer(
 
     private val roomsApi: RoomsApi =
         ApiClient.create(RoomsApi::class.java)
+
+    // GAP-09/10: available to future call/room coordinators, never auto-connected.
+    val inviteRepository =
+        InviteRepository(ApiClient.create(InvitesApi::class.java), sessionManager)
+    val callRepository = CallRepository(ApiClient.create(CallsApi::class.java))
+    val realtimeSignalingClient = RealtimeSignalingClient(sessionManager, sessionManager)
 
     val bootstrapRepository = BootstrapRepository(
         bootstrapApi = bootstrapApi,
@@ -145,7 +156,8 @@ class AppContainer(
         authApi = authApi,
         sessionManager = sessionManager,
         presenceRuntimeController = presenceLifecycleManager,
-        roomSessionRuntimeController = roomSessionCoordinator
+        roomSessionRuntimeController = roomSessionCoordinator,
+        disconnectSignaling = { realtimeSignalingClient.close() }
     )
 
     init {

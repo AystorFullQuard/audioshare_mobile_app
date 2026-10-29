@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import mme.corp.audioshare.AudioShareApplication
+import mme.corp.audioshare.BuildConfig
+import mme.corp.audioshare.network.retrofit.NetworkConfig
 
 @Composable
 fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
@@ -78,6 +80,19 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
                 else Text("Sign in")
             }
             TextButton(onClick = onBack) { Text("Back to home") }
+            if (BuildConfig.DEBUG) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Debug backend: ${NetworkConfig.BASE_URL}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Emulator: 10.0.2.2 · Physical phone: use your PC LAN IPv4 in gradle.properties and debug network security XML.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

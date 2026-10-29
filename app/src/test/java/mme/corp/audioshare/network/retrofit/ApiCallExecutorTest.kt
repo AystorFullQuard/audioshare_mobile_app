@@ -4,6 +4,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertSame
 import org.junit.Assert.fail
+import org.junit.Assert.assertTrue
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.Response
 import org.junit.Test
 
 class ApiCallExecutorTest {
@@ -20,6 +23,18 @@ class ApiCallExecutorTest {
         } catch (actual: CancellationException) {
             assertSame(expected, actual)
         }
+    }
+
+
+    @Test
+    fun unexpectedHttpErrorBodyIsNotShownInClientFailure() = runTest {
+        val secret = "SENSITIVE_RESPONSE_SENTINEL"
+        val result = executeApiCall<String>("unused") {
+            Response.error(403, "<html>$secret</html>".toResponseBody())
+        }
+        assertTrue(result.exceptionOrNull() is HttpStatusException)
+        assertTrue(result.exceptionOrNull().toString().contains("HTTP 403"))
+        assertTrue(!result.exceptionOrNull().toString().contains(secret))
     }
 
     @Test

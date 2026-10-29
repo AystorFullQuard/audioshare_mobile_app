@@ -1,6 +1,8 @@
 package mme.corp.audioshare.data.storage
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.edit
@@ -19,8 +21,10 @@ import java.io.IOException
 private val Context.dataStore by preferencesDataStore(name = "session")
 
 /** DataStore owns atomic snapshots; tokens are encrypted by AndroidKeyStore before persistence. */
-class SessionManager(context: Context) : DeviceIdStore, InstallationIdStore, TokenStore {
-    private val store = context.applicationContext.dataStore
+class SessionManager(
+    context: Context,
+    private val store: DataStore<Preferences> = context.applicationContext.dataStore
+) : DeviceIdStore, InstallationIdStore, TokenStore {
     private val cipher = AndroidTokenCipher()
     private val migrationLock = Mutex()
     private var legacyMigrated = false

@@ -1,8 +1,14 @@
 package mme.corp.audioshare.data.storage
 
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,27 +22,49 @@ import org.junit.runner.RunWith
 class SessionManagerTokenStoreTest {
 
     private lateinit var sessionManager: SessionManager
+    private lateinit var isolatedStoreScope: CoroutineScope
+    private lateinit var isolatedStoreFile: File
 
     @Before
-    fun setUp() = runBlocking {
-        val context = InstrumentationRegistry
-            .getInstrumentation()
-            .context
-
-        sessionManager = SessionManager(context)
-        prepareUser(
-            userId = USER_ID,
-            sessionId = SESSION_ID
-        )
-        sessionManager.clearDeviceId()
-        sessionManager.saveDeviceId(DEVICE_ID)
+    fun setUp() {
+        runBlocking {
+            // Isolated store per test; does not read or erase the installed user's session.
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            isolatedStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            isolatedStoreFile =
+                File.createTempFile("session-test-", ".preferences_pb", context.cacheDir)
+            isolatedStoreFile.delete() // Factory creates the file atomically.
+            val isolatedStore = PreferenceDataStoreFactory.create(
+                scope = isolatedStoreScope,
+                produceFile = { isolatedStoreFile }
+            )
+            sessionManager = SessionManager(context, isolatedStore)
+            prepareUser(userId = USER_ID, sessionId = SESSION_ID)
+            sessionManager.clearDeviceId()
+            sessionManager.saveDeviceId(DEVICE_ID)
+        }
     }
 
     @After
-    fun tearDown() = runBlocking {
-        clearUserDevice(USER_ID, SESSION_ID)
-        clearUserDevice(SECOND_USER_ID, SECOND_SESSION_ID)
-        sessionManager.clearSession()
+    fun tearDown() {
+        runBlocking {
+            clearUserDevice(USER_ID, SESSION_ID)
+            clearUserDevice(SECOND_USER_ID, SECOND_SESSION_ID)
+            sessionManager.clearSession()
+            isolatedStoreScope.cancel()
+            // Cleanup is best-effort and cannot change the @After method's Unit return.
+            isolatedStoreFile.delete()
+        }
+    }
+
+    @Test
+    fun tokensAreNotPersistedInPlaintext() = runBlocking {
+        // DataStore edits commit before returning; only encrypted envelopes should be present.
+        val data = isolatedStoreFile.readBytes()
+            .toString(Charsets.ISO_8859_1)
+        assertFalse(data.contains(OLD_ACCESS_TOKEN))
+        assertFalse(data.contains(OLD_REFRESH_TOKEN))
+        assertEquals(OLD_ACCESS_TOKEN, sessionManager.getAccessToken())
     }
 
     @Test
