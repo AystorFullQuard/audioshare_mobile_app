@@ -10,6 +10,7 @@ class ScreenTest {
     fun homeIsDefaultAndLoginIsExplicit() {
         assertEquals("home", Screen.Home.route)
         assertEquals("login", Screen.Login.route)
+        assertEquals("profile", Screen.Profile.route)
         assertFalse(shouldReturnHome(Screen.Home.route, runtimeReady = false))
         assertFalse(shouldReturnHome(Screen.Login.route, runtimeReady = false))
     }

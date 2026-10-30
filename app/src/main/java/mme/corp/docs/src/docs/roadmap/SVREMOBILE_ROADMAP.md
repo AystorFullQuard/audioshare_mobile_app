@@ -1,7 +1,7 @@
 # SvReMobile — Android / ServerRelay integration roadmap
 
-**Source:** supplied `SvReMobile.zip` (29 October work request) and supplied `ServerRelay.zip`, verified against the extracted sources; archive contents do not independently prove the precise 11:43 EET working-tree timestamp. R01–R04 remain accepted.
-**Current integration (29 Oct):** GAP-00–06/20/22 accepted for previously tested client-side scope (owner-reported JVM tests); GAP-07/08 remain in Android verification (latest run 51/52 passed; one JUnit invalid `tearDown` signature, now corrected pending rerun); test suite now uses isolated per-case DataStore fixtures in the target app context, pending rerun. GAP-09 WSS signaling boundary and GAP-10 invite/call REST contracts implemented **partially**, unaccepted until live E2E and lifecycle/security gates. Fresh per-auth CSRF proof/cookie lifetime and HomeAppearance styling added. SvRe Home remains default; Docker login→My Rooms and Android tests remain pending.
+**Source:** latest verifiable 29 October patched SvReMobile full-source package, cross-checked with supplied ServerRelay backend/OpenAPI. The requested 30 October 11:32 EET working-tree snapshot is not available for independent verification. Owner reports current local tests pass. R01–R04 remain accepted.
+**Current integration (30 Oct owner acceptance / patch scope):** owner confirms all JVM and Android instrumentation tests pass and local ServerRelay login succeeds. Existing GAP-07 client-origin/HTTPS/debug isolation and GAP-08 encrypted session storage are now ✅ for their verified mobile scope. GAP-09 adds bounded, version-checked signaling, opt-in reconnect/backoff, resubscription and snapshot-required notifications; GAP-10 validates REST control identifiers. GAP-11 blocks insecure legacy UDP audio service entry points until authenticated encryption and pairing exist. GAP-12 bounds realtime buffers/retries, opt-in discovery duration and lifecycle work. These newly changed paths are 🟡 until rerun and real-device/backend integration. Authenticated avatar now opens My Profile with account details and logout; guest avatar still opens login. No offline media security or realtime production acceptance is claimed.
 **Backend contract authority:** actual `ServerRelay/boot/src/main/java/sv/re/controller/`, `ServerRelay/dto/src/main/java/`, `ServerRelay/docs/src/main/docs/bootstrap/DEVICE_BOOTSTRAP_JOINT_CONTRACT_V1.md`, `security/SEC05_CSRF_CLIENT_CONTRACT.md`, and `realtime/` documents. **Do not use old mobile mock fixtures as proof of compatibility.**
 **Cross-references:** [integration GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [dependency table](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [architecture and security decisions](SVREMOBILE_ARCHITECTURE_SECURITY_DECISIONS.md) · [entity contract](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md) · [endpoint matrix and JWT/CSRF rules](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
 
@@ -9,7 +9,7 @@
 
 | Symbol | Meaning | Rule |
 |---|---|---|
-| ✅ | Verified / accepted for the *specific described scope* | ✅ applies to GAP-00–06/20/22 from owner-reported test acceptance for existing behavior; backend E2E remains separate. Newly changed GAP-07/08 and UI still require new verification. |
+| ✅ | Verified / accepted for the *specific described scope* | ✅ applies to GAP-00–08/20/22 for previously implemented, owner-tested client scope. Newly changed GAP-09–12/profile behavior requires its own rerun; production TLS and offline security remain separate. |
 | 🟡 | Partially present, under review, or decision pending | Existing classes do **not** demonstrate interoperability or release acceptance. |
 | ⬜ | Planned | No accepted implementation evidence for this step. |
 | ❌ | Confirmed blocker/incompatible candidate behavior | Static code-versus-contract mismatch or release-insecure configuration has been identified. |
@@ -18,15 +18,15 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 
 ## Overall completion
 
-**Owner-accepted planning/code items:** `12/104` (3 ANL, GAP-00–06, GAP-20, GAP-22, for accepted earlier coverage only). All reported JVM `test` tests pass; **51/52 instrumentation tests passed in the latest owner-run suite; one JUnit initialization error remains pending rerun**, with a known, corrected `@After` signature. GAP-07/08 and new auth changes require rerun. JUnit `tearDown()` now explicitly returns Unit, and debug login displays its configured backend origin with redacted, categorized failure messages. Login E2E against Docker remains unverified. GAP-09/10 code exists as transport/API scaffolding, not accepted realtime session/media flows. No remote internet media or production launch is implied.
+**Owner-accepted planning/code items:** `15/104` (3 ANL plus GAP-00–08/20/22, scoped to prior implementation). Owner reports **all Android instrumentation and JVM tests pass** and live local login works. This patch has not been run on the owner’s devices; newly added profile navigation and GAP-09–12 improvements remain under test. GAP-11 explicitly disables the unsafe unencrypted UDP media prototype rather than claiming offline hosting now works. No remote internet media or production launch is implied.
 
 | Stage | Status | Bar — verified steps | Priority / dependency |
 |---|---|---|---|
-| **GAP** — Cross-project integration blockers | 🟡 | `█████░░░░░░░` 9/23 | P0 / registration, then auth/bootstrap acceptance |
+| **GAP** — Cross-project integration blockers | 🟡 | `██████░░░░░░` 11/23 | P0 / registration, then auth/bootstrap acceptance |
 | **ANL** — Baseline and project understanding | ✅ | `████████████` 3/3 | Gate 0 product answers recorded; security design continues |
 | **ARCH** — Mobile architecture and ownership | 🟡 | `░░░░░░░░░░░░` 0/3 | Gate 0 / ANL |
 | **ENV** — Environments and network routing | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / SEC |
-| **SEC** — Client and local security | 🟡 | `░░░░░░░░░░░░` 0/6 | P0 / hosting and threat model |
+| **SEC** — Client and local security | 🟡 | `██░░░░░░░░░░` 1/6 | P0 / hosting and threat model |
 | **AUTH** — Identity and session flows | 🟡 | `░░░░░░░░░░░░` 0/4 | P0 / CSRF, transport |
 | **DEV** — Installation and device binding | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / AUTH, installation identity |
 | **BOOT** — Session bootstrap | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / DEV |
@@ -56,10 +56,10 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 | **GAP-06 / AUTH** CSRF/login/refresh | **Owner accepted; Docker E2E pending** | Device DTO work, offline threat model | Server CSRF policy + Docker E2E acceptance |
 | **GAP-03/04 / BOOT** bootstrap request/response | **Owner accepted; E2E pending** | GAP-06 CSRF, tests | Actual backend login→register→bootstrap E2E |
 | **GAP-05 / PRES / ROOM** presence model | **Owner accepted; Docker E2E pending** | DEV/BOOT DTOs, OBS/PERF | Bootstrap for end-to-end proof |
-| **GAP-09..10 / INV / CALL / RT** | **Client interfaces implemented (unverified)** | Offline pairing/security, Android tests | Auth/device binding + Docker WSS and REST E2E; reconnect/replay handling |
+| **GAP-09..10 / INV / CALL / RT** | **Contracts, resubscription, validation implemented; test now** | Offline pairing, profile, Android tests | WSS reconnect/snapshot reconciliation and REST lifecycle E2E |
 | **GAP-11,15..18 / OFF / AUD / SYNC** | **Threat model/prototype now** | Online contract work, perf baselines | Approved grant, pairing and crypto design |
-| **GAP-07 / ENV / SEC** API transport | **Hardening implemented** | GAP-08, UI, unit tests | Debug LAN allowlist, TLS deployment and transport E2E |
-| **GAP-08 / AUTH / SEC** encrypted DataStore tokens | **Encryption/migration implemented; 1 invalid JUnit teardown signature fixed, rerun pending** | GAP-07, UI, Android tests | Rerun 52 instrumentation cases; validate token encryption/migration on device |
+| **GAP-07 / ENV / SEC** API transport | **Owner-accepted app-origin/HTTPS/debug isolation** | GAP-08, UI, unit tests | Production TLS/WSS deployment gate |
+| **GAP-08 / AUTH / SEC** encrypted DataStore tokens | **Owner reports all instrumentation tests pass; accepted client scope** | GAP-07, UI | Real-device migration/restore and production threat model |
 | **GAP-12..13,19,21 / TEST / PERF / CI** | **Harness and audit now** | All workstreams | Android SDK/devices; finished flows for sign-off |
 
 Full stage dependencies: [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md). **Parallel** means design/coding can proceed independently; no dependent acceptance is implied.
@@ -77,9 +77,9 @@ Full stage dependencies: [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.
 
 Each row is deliberately brief: **status + step + what exists / what closure means**. Full investigative detail and decisions are in the linked companion files.
 
-### GAP — Integration blockers (`█████░░░░░░░` 9/23)
+### GAP — Integration blockers (`██████░░░░░░` 11/23)
 
-**GAP-00 ✅** network · **01 ✅** device route · **02 ✅** installation ID · **03 ✅** bootstrap request · **04 ✅** response · **05 ✅** server-owned presence · **06 ✅** CSRF/JWT · **07 🟡** origin-bound transport + debug allowlist · **08 🟡** Keystore token encryption/migration · **20 ✅** scope · **22 ✅** mobile entities. Other GAPs remain open; new Home navigation/login and 07/08 require Android and Docker E2E verification. [Endpoint register](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
+**GAP-00 ✅** network · **01 ✅** device route · **02 ✅** installation ID · **03 ✅** bootstrap request · **04 ✅** response · **05 ✅** server-owned presence · **06 ✅** CSRF/JWT · **07 ✅** origin-bound client transport · **08 ✅** encrypted token storage · **09 🟡** bounded WSS resubscription · **10 🟡** validated invite/call APIs · **11 🟡** unsafe UDP blocked, secure LAN pending · **12 🟡** bounded background work, profiling pending · **20 ✅** scope · **22 ✅** mobile entities. New profile and GAP-09–12 changes require Android/Docker E2E verification. [Endpoint register](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
 
 
 ### ANL — Baseline and project understanding  (`████████████` 3/3)
@@ -100,9 +100,9 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 - 🟡 **ENV-01** — Docker Compose route can be set with `-PserverRelayDebugBaseUrl=http://<private-LAN-IP>:8090/`; three-device execution and staging TLS pending.
 - ⬜ **ENV-02** — Define internet/LAN/captive-portal/network-switch selection, reachability, and TLS behavior.
 
-### SEC — Client and local security  (`░░░░░░░░░░░░` 0/6)
+### SEC — Client and local security  (`██░░░░░░░░░░` 1/6)
 
-- ❌ **SEC-00** — Implement backend-compatible CSRF preparation and same-origin cookie + masked-header pairing for public auth.
+- ✅ **SEC-00** — Backend-compatible CSRF preparation with origin-bound cookie + masked-header pairing implemented and owner-tested with local login.
 - ⬜ **SEC-01** — Protect credential and installation identity storage; exclude sensitive state from backup/transfer.
 - 🟡 **SEC-02** — GAP-00 disables network BODY logs; GAP-06 removed auth token fragments and login credential/response logs in touched code. Full logging audit remains open.
 - ⬜ **SEC-03** — Design QR/PIN identity binding, explicit host approval, remembered-device rejoin policy and authenticated media encryption/anti-replay.

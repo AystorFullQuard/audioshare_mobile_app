@@ -35,6 +35,18 @@ class SvReHomeTest {
     }
 
     @Test
+    fun signedInAvatarOpensProfileNavigation() {
+        var opens = 0
+        rule.setContent {
+            SvReHome(
+                signedIn = true, rooms = emptyList(),
+                onNavigateRooms = {}, onAvatarClick = { opens++ })
+        }
+        rule.onNodeWithTag("home_profile_avatar").performClick()
+        rule.runOnIdle { assertEquals(1, opens) }
+    }
+
+    @Test
     fun roomsSectionUsesRealNavigationAndNeverDisplaysFakeHistory() {
         var navigations = 0
         rule.setContent {

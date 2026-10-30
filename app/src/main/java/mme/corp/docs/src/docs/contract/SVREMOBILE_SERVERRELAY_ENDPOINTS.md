@@ -6,7 +6,7 @@
 
 ## Local phone login and room-list flow (development)
 
-1. Launch **SvRe Home** as a guest; only tapping the top-right avatar opens Login. `POST /api/v1/auth/login` reuses `AuthRepository` → `AuthApi` and receives the backend `{ session, user }` JSON. The shared OkHttp client first obtains `GET /api/v1/auth/csrf` and pairs the cookie with `X-XSRF-TOKEN` on the login POST.
+1. Launch **SvRe Home** as a guest; tapping the top-right avatar opens Login for guests and **My Profile** for authenticated users (login/bootstrap user details and Sign out). `POST /api/v1/auth/login` reuses `AuthRepository` → `AuthApi` and receives the backend `{ session, user }` JSON. The shared OkHttp client first obtains `GET /api/v1/auth/csrf` and pairs the cookie with `X-XSRF-TOKEN` on the login POST.
 2. A successful login encrypts session tokens with AndroidKeyStore and returns to Home. Home calls the existing `BootstrapStartupCoordinator` (device registration, session bootstrap, room restoration and presence heartbeat), without a second repository or an extra polling loop. `My Rooms` displays the authorized rooms returned by the actual server, never placeholders.
 3. Subsequent protected requests use the access token as `Authorization: Bearer <JWT>` via `AuthInterceptor`. A 401 may trigger the bounded token refresh path. Do not manually set JWT in UI fields.
 4. For a physical device, configure your PC **private IPv4 in two marked debug-only places**: `gradle.properties` (`serverRelayDebugBaseUrl`) and `app/src/debug/res/xml/network_security_config.xml` (matching `<domain>`). Keep HTTP LAN debugging on a trusted network only; release is HTTPS-only. Emulator default is `http://10.0.2.2:8090/`.
@@ -18,7 +18,7 @@
 - **Protected REST:** send `Authorization: Bearer <access JWT>` (exact header, never query string or body token). `AuthInterceptor` adds it centrally, `TokenAuthenticator` retries at most once after a successful no-bearer refresh. Do not include the JWT for public login/register/refresh/CSRF preflight.
 - **CSRF for unsafe methods:** `GET /api/v1/auth/csrf` first; retain the host-only `XSRF-TOKEN` cookie (HttpOnly), and send the *masked* value returned as `token` in `X-XSRF-TOKEN` header on POST/PUT/PATCH/DELETE. CSRF does **not** authenticate a user; protected writes still need the Bearer header. Uses one volatile origin-bound cookie jar shared by auth and refresh clients. On a CSRF 403, invalidate cached proof and do not automatically replay the write.
 - **URLs:** backend default `http://localhost:8090` for host-side tests; emulator uses `http://10.0.2.2:8090/`; a real Android device needs a reachable Docker/host LAN IP. Release URL is HTTPS-only. Do not put refresh/access tokens in logs or URL parameters.
-- **Acceptance:** owner reported Android unit tests passing for GAP-00..04/22; GAP-05/06 owner acceptance is based on reported tests; neither is claimed Docker/real-device E2E verified. Authentication → registration → bootstrap → presence must be exercised against the *same* ServerRelay instance for final gate closure.
+- **Acceptance:** owner reports all JVM and Android tests passing and local ServerRelay login successful. This covers the previously implemented client authentication/storage policy, not new signaling/room control E2E or production TLS. Authentication → registration → bootstrap → presence must be exercised against the *same* ServerRelay instance for final gate closure.
 
 ## OpenAPI operation matrix
 
@@ -49,18 +49,18 @@
 | `POST /api/v1/rooms/{roomId}/deactivate` | Bearer JWT | Cookie + X-XSRF-TOKEN | `RoomDeviceActionRequest` → `—` / 204, 400, 401, 403, 406, 413, 415 | RoomsApi.kt | ✅ Endpoint declared |
 | `POST /api/v1/rooms/{roomId}/leave` | Bearer JWT | Cookie + X-XSRF-TOKEN | `RoomDeviceActionRequest` → `RoomResponse` / 200, 400, 401, 403, 404, 409, 406, 413, 415 | RoomsApi.kt | ✅ Endpoint declared |
 | `POST /api/v1/rooms/{roomId}/archive` | Bearer JWT | Cookie + X-XSRF-TOKEN | `RoomDeviceActionRequest` → `RoomResponse` / 200, 400, 401, 403, 404, 409, 406, 413, 415 | RoomsApi.kt | ✅ Endpoint declared |
-| `POST /api/v1/rooms/{roomId}/invites` | Bearer JWT | Cookie + X-XSRF-TOKEN | `CreateRoomInviteRequest` → `RoomInviteResponse` / 201, 400, 401, 403, 404, 409, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `GET /api/v1/rooms/{roomId}/invites` | Bearer JWT | — | `—` → `—` / 200, 401, 403, 404, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `POST /api/v1/rooms/{roomId}/invites/qr` | Bearer JWT | Cookie + X-XSRF-TOKEN | `CreateRoomInviteRequest` → `—` / 201, 400, 401, 403, 404, 409, 429, 503, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `DELETE /api/v1/rooms/{roomId}/invites/{inviteId}` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `—` / 204, 401, 403, 404, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
+| `POST /api/v1/rooms/{roomId}/invites` | Bearer JWT | Cookie + X-XSRF-TOKEN | `CreateRoomInviteRequest` → `RoomInviteResponse` / 201, 400, 401, 403, 404, 409, 406, 413, 415 | InvitesApi.kt | ✅ Endpoint declared (E2E pending) |
+| `GET /api/v1/rooms/{roomId}/invites` | Bearer JWT | — | `—` → `—` / 200, 401, 403, 404, 400, 406, 413, 415 | InvitesApi.kt | ✅ Endpoint declared (E2E pending) |
+| `POST /api/v1/rooms/{roomId}/invites/qr` | Bearer JWT | Cookie + X-XSRF-TOKEN | `CreateRoomInviteRequest` → `—` / 201, 400, 401, 403, 404, 409, 429, 503, 406, 413, 415 | InvitesApi.kt | ✅ Endpoint declared (E2E pending) |
+| `DELETE /api/v1/rooms/{roomId}/invites/{inviteId}` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `—` / 204, 401, 403, 404, 400, 406, 413, 415 | InvitesApi.kt | ✅ Endpoint declared (E2E pending) |
 | `POST /api/v1/presence/heartbeat` | Bearer JWT | Cookie + X-XSRF-TOKEN | `PresenceHeartbeatRequest` → `PresenceHeartbeatResponse` / 200, 400, 401, 403, 406, 413, 415 | PresenceApi.kt | ✅ Client contract (GAP-05; Docker E2E open) |
 | `PUT /api/v1/presence/preference` | Bearer JWT | Cookie + X-XSRF-TOKEN | `PresencePreferenceRequest` → `PresencePreferenceResponse` / 200, 400, 401, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `POST /api/v1/rooms/{roomId}/calls` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 201, 401, 403, 404, 409, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `GET /api/v1/rooms/{roomId}/calls/current` | Bearer JWT | — | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `GET /api/v1/calls/{callId}` | Bearer JWT | — | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `POST /api/v1/calls/{callId}/join` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `POST /api/v1/calls/{callId}/leave` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
-| `POST /api/v1/calls/{callId}/end` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 200, 401, 403, 404, 400, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
+| `POST /api/v1/rooms/{roomId}/calls` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 201, 401, 403, 404, 409, 400, 406, 413, 415 | CallsApi.kt | ✅ Endpoint declared (E2E pending) |
+| `GET /api/v1/rooms/{roomId}/calls/current` | Bearer JWT | — | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | CallsApi.kt | ✅ Endpoint declared (E2E pending) |
+| `GET /api/v1/calls/{callId}` | Bearer JWT | — | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | CallsApi.kt | ✅ Endpoint declared (E2E pending) |
+| `POST /api/v1/calls/{callId}/join` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | CallsApi.kt | ✅ Endpoint declared (E2E pending) |
+| `POST /api/v1/calls/{callId}/leave` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 200, 401, 403, 404, 409, 400, 406, 413, 415 | CallsApi.kt | ✅ Endpoint declared (E2E pending) |
+| `POST /api/v1/calls/{callId}/end` | Bearer JWT | Cookie + X-XSRF-TOKEN | `—` → `CallSnapshot` / 200, 401, 403, 404, 400, 406, 413, 415 | CallsApi.kt | ✅ Endpoint declared (E2E pending) |
 
 ## Contract essentials for implemented foundation
 
@@ -82,7 +82,7 @@ The Retrofit client is origin-bound before auth interceptors. Debug cleartext pe
 
 ### Added client contracts — GAP-09/10 (29 Oct)
 
-- `RealtimeSignalingClient` uses an explicitly opened `ws(s)://<configured-origin>/ws/realtime` connection; handshake sends `Authorization: Bearer <access JWT>` and `X-AudioShare-Device-Id: <server UUID>`. The JSON envelope uses `version: "1"`, an event UUID, UTC timestamp and `{}` payload. Room and call subscriptions are opt-in. WebSocket connection is closed on explicit logout. **Not a media transport; reconnect/resubscription and live E2E are still open.**
+- `RealtimeSignalingClient` uses an explicitly opened `ws(s)://<configured-origin>/ws/realtime` connection; handshake sends `Authorization: Bearer <access JWT>` and `X-AudioShare-Device-Id: <server UUID>`. The JSON envelope uses `version: "1"`, an event UUID, UTC timestamp and `{}` payload. Room and call subscriptions are opt-in. WebSocket connection is closed on explicit logout. **Not a media transport:** client now has bounded reconnect, validated server envelopes, idempotent subscriptions and snapshot-required notification (server V1 has no replay); live E2E and lifecycle profiling are still open.
 - `InvitesApi`: `POST/GET /api/v1/rooms/{roomId}/invites`; `POST /api/v1/rooms/{roomId}/invites/qr` (PNG); `DELETE /api/v1/rooms/{roomId}/invites/{inviteId}`. Request for creation requires `deviceId` from device binding; raw code appears only in creation response and is never persisted by the repository.
 - `CallsApi`: `POST /api/v1/rooms/{roomId}/calls`, `GET /api/v1/rooms/{roomId}/calls/current`, `GET /api/v1/calls/{callId}`, and `POST /api/v1/calls/{callId}/{join|leave|end}`. Model is `CallSnapshot` and participant snapshots. No media negotiation implemented.
 - `AuthApi` retains `POST /api/v1/auth/login`, `refresh`, `logout`. Every auth write now obtains a **fresh** `GET /api/v1/auth/csrf` proof and HTTP-only cookie, sends the returned masked proof in `X-XSRF-TOKEN`, and drops *both* in-memory objects after response/failure. JWT is not sent to login/refresh; protected routes carry JWT. CSRF failure is not automatically replayed. No proof/cookie is written to persistent storage.
@@ -94,3 +94,10 @@ These are source-aligned endpoint contracts, not proof of successful login or re
 The debug login screen displays the configured backend base URL and a redacted failure category. On Android Emulator use `http://10.0.2.2:8090/` when ServerRelay is reachable on the host; on a physical device set `serverRelayDebugBaseUrl=http://<your-PC-LAN-IPv4>:8090/` in root `gradle.properties`, and permit the same exact host in `app/src/debug/res/xml/network_security_config.xml`. Build the debug variant again; ensure the phone and PC can reach each other and local firewall/Docker port 8090 is exposed. Never use `localhost` on the phone to mean your development PC. Do not place real credentials or JWTs in Gradle files, logs, or issue reports.
 
 Login first GETs `/api/v1/auth/csrf` without a JWT, receives the masked `token` plus `XSRF-TOKEN` cookie, and POSTs `/api/v1/auth/login` with the matching `X-XSRF-TOKEN` header and cookie. The proof is cleared after the auth transaction. A 401 indicates credentials/auth rejection, a 403 indicates access/CSRF rejection, and a connection error indicates reachability; do not treat them as the same failure. This is client-side contract alignment; a real running-ServerRelay login is not yet proven.
+
+### Profile and new safety boundaries (30 Oct)
+
+- Home avatar: **guest → login**, **signed-in → profile**. Profile displays available login/bootstrap user fields, fallback account ID, server-supplied theme and a Sign out button that clears local credentials and realtime subscriptions. `/api/v1/auth/me` is still not implemented; profile uses the existing authenticated response, not a new API.
+- New signaling frames are checked for UTF-8 size, known V1 types/version, UUID event ID and optional scope. Inbound is capped, events deduplicated, reconnection is capped at five attempts and room/call subscriptions are replayed only as subscriptions, **not missed events**. On `SNAPSHOT_REQUIRED`, consumers must re-fetch authoritative snapshots. Live signaling is not automatically started.
+- Legacy UDP raw audio foreground-service starts are refused: there is **no secure local audio transport yet**, and enabling that unsafe prototype is not considered GAP-11 completion.
+- `InviteRepository` / `CallRepository` refuse malformed UUIDs before Retrofit; `CsrfInterceptor` still creates the origin-bound XSRF cookie/proof for every unsafe operation and auth refresh. `Authorization: Bearer <JWT>` remains shared, never passed by individual screens.

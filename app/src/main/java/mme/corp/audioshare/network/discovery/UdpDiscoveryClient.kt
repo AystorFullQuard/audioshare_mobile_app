@@ -17,6 +17,8 @@ class UdpDiscoveryClient(
     private var worker: Thread? = null
 
     fun findReceivers(timeoutMs: Long = 1_500L) {
+        // GAP-12: discovery is opt-in and always time-bounded; no unbounded UDP scan.
+        require(timeoutMs in 250L..5_000L) { "Discovery timeout must be 250–5000 ms" }
         if (!running.compareAndSet(false, true)) {
             return
         }
@@ -58,7 +60,7 @@ class UdpDiscoveryClient(
 
                 onReceiversFound(foundReceivers.values.toList())
             } catch (error: Exception) {
-                Log.w("UdpDiscoveryClient", "Receiver discovery failed: ${error.message}")
+                Log.w("UdpDiscoveryClient", "Receiver discovery failed")
                 onError(error)
             } finally {
                 running.set(false)

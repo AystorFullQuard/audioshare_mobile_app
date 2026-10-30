@@ -52,7 +52,11 @@ private enum class HostChoice { ONLINE, LOCAL }
 
 /** A lightweight home shell: reuses the bootstrap-restored room state, not a second poller. */
 @Composable
-fun HomeScreen(onLogin: () -> Unit = {}, onNavigateRooms: () -> Unit = {}) {
+fun HomeScreen(
+    onLogin: () -> Unit = {},
+    onNavigateRooms: () -> Unit = {},
+    onOpenProfile: () -> Unit = {}
+) {
     val app = LocalContext.current.applicationContext as AudioShareApplication
     val token by app.container.accessTokenState.collectAsStateWithLifecycle()
     val presence by app.container.presenceHeartbeatCoordinator.confirmedPresence.collectAsStateWithLifecycle()
@@ -106,7 +110,7 @@ fun HomeScreen(onLogin: () -> Unit = {}, onNavigateRooms: () -> Unit = {}) {
         isConnecting = isConnecting && !ready,
         connectionError = if (ready) null else connectionError,
         onRetry = { retryNumber++ },
-        onAvatarClick = onLogin,
+        onAvatarClick = { if (signedIn) onOpenProfile() else onLogin() },
         onNavigateRooms = onNavigateRooms,
         appearance = HomeAppearance.from(currentUser?.settings)
     )
@@ -157,9 +161,7 @@ internal fun SvReHome(
                     .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                BrandHeader(signedIn, avatarInitial) {
-                    if (!signedIn) onAvatarClick() else notice("You are signed in.")
-                }
+                BrandHeader(signedIn, avatarInitial, onAvatarClick)
                 if (isConnecting) {
                     Text(
                         "Connecting to ServerRelay and loading your rooms…",

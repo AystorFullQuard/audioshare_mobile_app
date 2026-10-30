@@ -109,6 +109,14 @@ class AudioStreamingService : Service() {
         flags: Int,
         startId: Int
     ): Int {
+        // GAP-11: legacy UDP carries raw PCM and accepts unauthenticated packets.
+        // Keep the prototype source for future migration, but never start it from the app.
+        // Enable media only after a separately reviewed paired/encrypted transport exists.
+        if (intent?.action == ACTION_START_SYSTEM_AUDIO || intent?.action == ACTION_START_RECEIVER) {
+            stopAll()
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_START_SYSTEM_AUDIO -> handleStartSystemAudio(intent)
             ACTION_START_RECEIVER -> handleStartReceiver(intent)
@@ -274,7 +282,7 @@ class AudioStreamingService : Service() {
         return when (mode) {
             ForegroundMode.SYSTEM_AUDIO ->
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
 
             ForegroundMode.RECEIVER ->
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK

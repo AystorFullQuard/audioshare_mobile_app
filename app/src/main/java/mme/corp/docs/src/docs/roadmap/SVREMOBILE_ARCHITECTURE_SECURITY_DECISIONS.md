@@ -56,4 +56,4 @@ Media idle mode should not retain active capture locks or continuous discovery; 
 - **MEDIA-01:** secure codec/transport choice and measured latency, jitter, thermal and battery budgets; secure guest media-key handling.
 - **CLOUD-01:** later production hosting provider, staging URL and Play Console publication gates; **remote cross-Internet calling stays explicitly outside v1**.
 
-**Status discipline:** owner product decisions are not code acceptance; `ANL-00..02` and GAP-00–04/20/22 are ✅ based on prior user-reported successful unit tests and acceptance (10/104); GAP-05/06 are implemented 🟡 awaiting this revision’s new tests. Real ServerRelay E2E and device validation remain separate open gates.
+**Status discipline:** owner product decisions are not code acceptance; `ANL-00..02` and GAP-00–08/20/22 are ✅ for previously implemented client scope by owner-reported JVM/Android test acceptance and successful local login (15/104 including SEC-00). New GAP-09–12/profile changes are 🟡 pending rerun. Real ServerRelay E2E and device validation remain separate open gates.

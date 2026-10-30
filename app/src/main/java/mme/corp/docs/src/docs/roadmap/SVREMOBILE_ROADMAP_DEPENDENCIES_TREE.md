@@ -3,7 +3,7 @@
 **Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md) · [HTTP endpoints](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
 
 ```text
-GAP 🟡 9/23 accepted (owner-reported tests); GAP-07/08 implemented, latest run 51/52 passed; single JUnit teardown signature corrected, rerun pending; GAP-09/10 transport/API contracts implemented, E2E pending
+GAP 🟡 11/23 owner-accepted for prior client scope; JVM + Android suite reported green, local login works; GAP-09–12 new patch pending verification
 ├─ GAP-00 ✅ central endpoint policy; owner-reported prior tests passed, E2E pending
 ├─ GAP-01 ✅ /devices/register path + request/response test fixture
 ├─ GAP-02 ✅ installation ID + logout/recovery persistence + backup exclusions
@@ -50,7 +50,7 @@ ANL ✅ static inventory + server contract gap register
 | GAP-05 — presence model | Owner accepted; Docker E2E pending | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
 | GAP-09..10 — Invite/Call/Realtime | Interfaces implemented, verification now | OFF transport experiments | Live JWT/device binding, WSS subscription/reconnect, call/invite REST E2E |
 | GAP-11,15..18 — offline media and sync | Threat model/prototype now | Backend GAP workstreams, PERF | Offline grant, key agreement and pairing designs |
-| GAP-08,12..13,19,21 — quality/release gates | Test harness now | Every workstream | Three phones, live backend, accepted media modes |
+| GAP-12..13,19,21 — quality/release gates | Test harness now | Every workstream | Three phones, live backend, accepted media modes |
 
 The dependency matrix permits independent development, **not** premature completion claims.
 
@@ -78,3 +78,5 @@ The dependency matrix permits independent development, **not** premature complet
 - **Release:** Google Play App Bundle/internal + closed testing with three different Android devices, foreground service/camera/mic/local network policy verification.
 
 **GAP-07/08 security additions:** Origin guard + strict debug allowlist and AndroidKeyStore AES-GCM token envelopes can be verified independently in parallel; production TLS, physical-device debug host allowlisting, legacy-token migration and Android backup/restore tests are still required for closure.
+
+**30 Oct profile / GAP-09–12 dependencies:** Authenticated profile reads login/bootstrap identity and logout uses the shared AuthRepository; does not require a new backend endpoint. WSS subscriptions need authenticated device UUID and live authorization; each reconnect requires fresh REST snapshots because backend V1 has no replay. Invite/Call client validation can be tested in parallel but is blocked for acceptance by live lifecycle/E2E. Secure offline media stays **blocked** by pairing/trust/AEAD/key lifecycle, and CPU/battery acceptance by real devices.

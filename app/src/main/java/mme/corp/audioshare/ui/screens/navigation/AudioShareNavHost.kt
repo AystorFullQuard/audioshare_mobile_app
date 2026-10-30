@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import mme.corp.audioshare.AudioShareApplication
 import mme.corp.audioshare.ui.screens.home.HomeScreen
 import mme.corp.audioshare.ui.screens.login.LoginScreen
+import mme.corp.audioshare.ui.screens.profile.ProfileScreen
 
 /** Home is always reachable offline. Protected room screens require a bootstrapped session. */
 @Composable
@@ -51,6 +52,13 @@ fun AudioShareNavHost(
                     if (runtimeReady) {
                         navController.navigate(Screen.Rooms.route) { launchSingleTop = true }
                     }
+                },
+                onOpenProfile = {
+                    if (!accessToken.isNullOrBlank()) {
+                        navController.navigate(Screen.Profile.route) { launchSingleTop = true }
+                    } else {
+                        navController.navigate(Screen.Login.route) { launchSingleTop = true }
+                    }
                 }
             )
         }
@@ -58,6 +66,17 @@ fun AudioShareNavHost(
             LoginScreen(
                 onBack = { navController.popBackStack() },
                 onLoginSuccess = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+        composable(Screen.Profile.route) {
+            ProfileScreen(
+                onBack = { navController.popBackStack() },
+                onLoggedOut = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                         launchSingleTop = true
