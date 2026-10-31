@@ -1,82 +1,99 @@
-# SvReMobile — staged implementation dependency tree
+# SvReMobile — implementation dependencies and acceptance tree
 
-**Source:** [SVREMOBILE_ROADMAP.md](SVREMOBILE_ROADMAP.md) · [HTTP endpoints](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md). **Legend:** ✅ verified planning, 🟡 partially present/decision pending, ⬜ planned, ❌ confirmed blocker. These are **not** executable dependencies and the graph is not a claim of delivered features.
+**Reference:** [main roadmap](SVREMOBILE_ROADMAP.md) · [GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [endpoint contract](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
+
+Legend: ✅ accepted implemented scope · 🟡 partly implemented, new changes pending verification · ⬜ planned / not delivered · ❌ confirmed blocker. The owner reports prior unit and Android suites passing (0 failures); the 31 October patch still needs its own run.
+
+## GAP status tree — every item explicitly listed
 
 ```text
-GAP 🟡 11/23 owner-accepted for prior client scope; JVM + Android suite reported green, local login works; GAP-09–12 new patch pending verification
-├─ GAP-00 ✅ central endpoint policy; owner-reported prior tests passed, E2E pending
-├─ GAP-01 ✅ /devices/register path + request/response test fixture
-├─ GAP-02 ✅ installation ID + logout/recovery persistence + backup exclusions
-├─ GAP-03 ✅ bootstrap installationId, exact server request fields
-├─ GAP-04 ✅ bootstrap response session/user/config/devices/presence fields
-├─ GAP-22 ✅ client entity foundation compiled; Android verification/DTO mapping pending
-├─ GAP-05 ✅ presence schema; GAP-06 ✅ CSRF/JWT (Docker E2E open)
-├─ GAP-07..19,21 🟡/❌/⬜ remaining security/feature testing
-└─ GAP-20 ✅ remote-internet media deferred (scope decision, not code)
-ANL ✅ static inventory + server contract gap register
-└─ ANL-02 ✅ Q01–Q08 + R01–R04 product decisions recorded (code still unimplemented)
-   ├─ ARCH 🟡 one Android app, module boundary choice
-   │  ├─ ENV-00 🟡 centralized per-variant endpoint policy; Android test and TLS endpoint pending
-   │  │  └─ SEC-00 🟡 shared CSRF/cookie proof implemented; live auth gate pending
-   │  │     └─ AUTH 🟡 align login / refresh / stored session
-   │  │        └─ DEV-00 🟡 endpoint/installationId implemented; Docker auth proof pending
-   │  │           └─ BOOT-00 🟡 bootstrap request/response aligned; live login and CSRF pending
-   │  │              ├─ ROOM 🟡 → INV ⬜ → CALL ⬜
-   │  │              ├─ PRES 🟡 presence heartbeat aligned; realtime member updates pending
-   │  │              └─ RT ⬜ → WebSocket auth, subscriptions, reconnect
-   │  └─ SEC-01..05 ⬜ client credential and local network security
-   ├─ OFF-01 ⬜ prior-login offline host grant + 4 accepted security controls; TTL/logout semantics to design
-   │  └─ SEC-03 ⬜ local pairing and encryption
-   │     └─ OFF-02..04 ⬜ local discovery, trusted rooms and cloud-independent events
-   │        ├─ AUD ⬜ 1:1 authenticated mic call → host+2 one-way share (guest approval only here)
-   │        │  └─ VID ⬜ later nearby video call / live audio-to-camera upgrade
-   │        └─ SYNC ⬜ reachability, policy/session refresh on return (never when unreachable)
-   ├─ BG/AUDIO policy ⬜ active audio with screen locked only where Android permits; notification + FGS cleanup
-   ├─ PERF ⬜ baseline before implementation; gate all high-frequency work
-   ├─ OBS/LOG ⬜ bounded, redacted **local-only** diagnostics first
-   ├─ TEST/CI ⬜ tests and gates continuously, not only at launch
-   └─ PROD ⬜ Docker Compose now; later cloud, Google Play testing/rollout, TLS, support
+GAP ██████░░░░░░ 11/23 accepted (47.8%); new GAP-09–14 work awaits new test/live gates
+├─ FOUNDATION / SERVER CONTRACT
+│  ├─ GAP-00 ✅ centralized endpoint origin/HTTPS debug allowlist
+│  ├─ GAP-01 ✅ device register route with server-assigned ID
+│  ├─ GAP-02 ✅ stable installation ID / backup exclusion
+│  ├─ GAP-03 ✅ bootstrap request contract
+│  ├─ GAP-04 ✅ bootstrap response model
+│  ├─ GAP-05 ✅ server-owned presence mapping
+│  ├─ GAP-06 ✅ CSRF cookie/header + JWT refresh
+│  ├─ GAP-07 ✅ release HTTPS and origin-locked debug HTTP
+│  ├─ GAP-08 ✅ AndroidKeyStore token storage and test fix
+│  └─ GAP-22 ✅ client-safe entity foundation
+├─ ONLINE REALTIME / CALL CONTROL
+│  ├─ GAP-09 🟡 authenticated WSS; rejoin resubscribe + snapshot
+│  ├─ GAP-10 🟡 call lifecycle and one-use invite controls in UI
+│  └─ GAP-14 🟡 OpenAPI–Retrofit contract parity checker 25/37
+├─ LOCAL OFFLINE / PERFORMANCE / ANDROID
+│  ├─ GAP-11 🟡 manual-code ECDH & AES-GCM anti-replay groundwork
+│  ├─ GAP-12 🟡 bounded lifecycle/retry/work-budget policy
+│  └─ GAP-13 🟡 Android microphone/projection/playback FGS rules
+└─ FUTURE ENTITLEMENT / RELEASE
+   ├─ GAP-15 ⬜ prior-online-login offline host grant
+   ├─ GAP-16 ⬜ trusted local peer/host approval & offline ACL
+   ├─ GAP-17 ⬜ 1:1 audio then host+2 and video later
+   ├─ GAP-18 ⬜ cloud return token/policy reconciliation
+   ├─ GAP-19 ⬜ Google Play release/privacy/permissions
+   ├─ GAP-20 ✅ nearby LAN-only v1, internet remote deferred
+   └─ GAP-21 ⬜ background audio and role/guest caps
 ```
 
-## Dependency table
+**Unimplemented portions of GAP-11 are still blocking media** even though ECDH/AEAD can now be exercised. There is no secure local room grant, QR scanner, trust store or authorized socket/media integration. GAP-14 route parity does not prove DTO-level or deployment parity.
 
-| Work / dependency | Can be done now | Can run in parallel with | Blocked by (for acceptance) |
-|---|---|---|---|
-| GAP-22 — client-safe entity foundation | Owner accepted | GAP-06 auth and GAP-01..05 contract work | Android build/test; endpoint mapping for integration |
-| GAP-00 — network/config foundation | Owner accepted; E2E pending | LOG/SEC audit, TEST, docs | Android Gradle tests, production HTTPS URL |
-| GAP-01/02 — registration + installation ID | Owner accepted; E2E pending | GAP-06 auth; GAP-03 bootstrap | Gradle tests + backend 201/session-binding |
-| GAP-06 — CSRF/auth sessions | Owner accepted; Docker E2E pending | GAP-03/04 DTO design, OFF threat model | Reachable server + CSRF cookie/header acceptance |
-| GAP-03/04 — bootstrap | Owner accepted; E2E pending | GAP-06 implementation, tests | Real backend authenticated E2E + Android tests |
-| GAP-05 — presence model | Owner accepted; Docker E2E pending | GAP-03/04, OBS/PERF | Bootstrap and server response contract |
-| GAP-09..10 — Invite/Call/Realtime | Interfaces implemented, verification now | OFF transport experiments | Live JWT/device binding, WSS subscription/reconnect, call/invite REST E2E |
-| GAP-11,15..18 — offline media and sync | Threat model/prototype now | Backend GAP workstreams, PERF | Offline grant, key agreement and pairing designs |
-| GAP-12..13,19,21 — quality/release gates | Test harness now | Every workstream | Three phones, live backend, accepted media modes |
+## Other stage dependency tree
 
-The dependency matrix permits independent development, **not** premature completion claims.
+```text
+ANL ✅ 3/3 planning inventory, backend contracts and accepted requirements
+├─ ARCH 🟡 0/3 architecture boundaries
+│  └─ ENV 🟡 0/3 debug LAN + TLS environment
+│     ├─ SEC 🟡 2/6 CSRF + encrypted storage accepted; offline threats unresolved
+│     │  └─ AUTH 🟡 0/4 → DEV 🟡 0/3 → BOOT 🟡 0/3
+│     │     ├─ ROOM 🟡 0/3 → INV 🟡 0/3 → CALL 🟡 0/3
+│     │     ├─ PRES 🟡 1/3 server-owned presence mapping accepted
+│     │     └─ RT 🟡 0/4 WSS works only after authenticated device binding
+│     └─ OFF 🟡 0/5 offline authorization & trusted peer admission still blocked
+│        ├─ AUD 🟡 0/4 1:1 audio → host+2; no enabled insecure UDP
+│        │  └─ VID ⬜ 0/4 later camera / video
+│        └─ SYNC ⬜ 0/4 cloud policy/token checks only when reachable
+├─ PERF ⬜ 0/5 real battery, CPU, RAM, ROM and thermal budgets needed
+├─ OBS ⬜ 0/3 → LOG 🟡 0/3 redacted local diagnostics
+├─ TEST 🟡 1/5 owner-reported green existing suite; new patch unverified
+│  └─ CI ⬜ 0/3 regression, contract, release gates
+└─ PROD ⬜ 0/4 Docker-first, TLS/WSS and Google Play later
+```
 
-## Gates and sequencing
+## Per-GAP implementation dependencies
 
-| Gate | Must be explicitly decided or verified | Output | Status |
-|---|---|---|---|
-| **0 — Product/security** | Q01–Q08 and R01–R04 accepted: prior-login host, LAN-only v1, background audio where legal, 1:1 then host+2/guest sharing. Phone models deferred; complete SEC threat model before media coding. | ✅ owner decision register; 🟡 security design/threat model | 🟡 |
-| **1 — Infrastructure/auth** | HTTPS/WSS or approved debug-only LAN exception, CSRF, token storage/session cleanup. | Real login/refresh/logout against matching ServerRelay build. | ❌ |
-| **2 — Bind & bootstrap** | `installationId` and `/devices/register` implemented; `/session/bootstrap` request and response now mapped; not live verified. | Validated new install→auth→bind→bootstrap and token rotation/revocation. | ❌ |
-| **3 — Online features** | Rooms, Presence, Invite, CallSession and WSS event/reconnect. | Verified two-phone room and control-plane lifecycle. | 🟡 |
-| **4 — Offline media** | Trusted peers, independent local control, hotspot/airplane, media keys, camera-ready A/V architecture and reconnect. | Three-phone no-internet audio, local trust & cloud return validation, with video capability tracked separately. | 🟡 |
-| **5 — Ship** | Stable power/memory/disk/privacy, video gates, CI and Play Console internal/closed-to-prod rollout. | Owner-accepted Android release and backend compatibility record. | ⬜ |
+| GAP | Status | Can be done now | In parallel with | Blocked by for full acceptance |
+|---|---|---|---|---|
+| GAP-00 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-07; SEC-00 |
+| GAP-01 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-02, AUTH-00 |
+| GAP-02 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-01, SEC-01 |
+| GAP-03 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-01/02 |
+| GAP-04 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-03 |
+| GAP-05 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-04 |
+| GAP-06 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-00 |
+| GAP-07 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-00 |
+| GAP-08 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-06 |
+| GAP-09 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-01/06, RT-02, live WS E2E |
+| GAP-10 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-04/06/09, server E2E |
+| GAP-11 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-15/16, OFF-03, secure transport integration |
+| GAP-12 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-09/11, 3-phone energy/memory evidence |
+| GAP-13 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-11/12, explicit consent, device tests |
+| GAP-14 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-09/10, full DTO/live contract tests |
+| GAP-15 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | AUTH-03, SEC-03, expiry/revocation semantics |
+| GAP-16 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-11/15, host control |
+| GAP-17 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-11/13/16, AUD/VID acceptance |
+| GAP-18 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | ENV-02, SYNC-00..03 |
+| GAP-19 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-13, PROD/CI, device evidence |
+| GAP-20 | ✅ | Accepted for prior tested scope | SEC, OFF, SYNC, CI | owner scope decision |
+| GAP-21 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-13/16/17, device tests |
+| GAP-22 | ✅ | Accepted for prior tested scope | SEC, OFF, SYNC, CI | prior entity/JVM owner acceptance |
 
-**Parallelism:** CI/test harness, performance telemetry, architectural dependency rules and local threat model may be prepared during Gates 0–2. Never postpone media/security measurement until production. Never mark online authorization as valid for disconnected peers without an approved local security model.
+## Milestones and practical gates
 
-## Scope after owner response
+1. **Existing online foundation:** owner-accepted client login/CSRF, registration/bootstrap, KeyStore and avatar/profile. Stage ANL completed. Keep all protection against token/cookie leakage.
+2. **GAP-09/10/14:** server-running WSS and invite/call E2E, expired JWT and registration revocation, authoritative snapshots after reconnect, malformed envelopes, null/404 call responses. Automated path check covers **25 of 37** HTTP operations and must run against the actual backend OpenAPI on changes.
+3. **GAP-11/13/15/16/17/21:** implement offline authorization grant and host-trusted admission, secure discovery/transport and consent before connecting real microphone, projection or UDP. Pairing primitives alone are insufficient. Android 14+ foreground-service rules and Android 17 local network migration must be tested.
+4. **GAP-12/18/19:** real three-device tests for Doze, screen lock, hotspot transitions, CPU/thermal/heap/disk growth and cloud/session reconciliation. Release Play/TLS is a later gate.
 
-- **Cloud initially:** ServerRelay in local Docker Compose, physical devices on reachable dev network for REST/WSS tests; no mandatory VPS/cloud purchase.
-- **Offline:** hotspot/LAN discovery and local call events run without ServerRelay; creator requires prior online login on same installation plus bounded local grant. QR/PIN, manual host approval, remembered trust and authenticated encrypted media are mandatory. Grant expiry and logout design remains pending, **not R01**.
-- **Transitions:** `ConnectivityManager` network callbacks start bounded real-backend reachability checks; policy, session/bootstrap and token refresh are online-only. LAN media never depends on success of those cloud requests.
-- **Media:** v1 nearby/hotspot/LAN only: 1:1 low-latency interactive authenticated audio first, then one-way host+two listeners with manually approved guests; `VID` later supports video calls and camera upgrade. Cross-network Internet media, TURN and SFU deliberately deferred (R02 resolved).
-- **Background:** allow ongoing audio with screen locked/app background when Android permits, with user-visible service notification, appropriate permissions and cleanup; do not silently run camera in background.
-- **Hardware:** three different Android devices are available; models/OS versions arrive before TEST-02, not required to record architecture decisions.
-- **Release:** Google Play App Bundle/internal + closed testing with three different Android devices, foreground service/camera/mic/local network policy verification.
-
-**GAP-07/08 security additions:** Origin guard + strict debug allowlist and AndroidKeyStore AES-GCM token envelopes can be verified independently in parallel; production TLS, physical-device debug host allowlisting, legacy-token migration and Android backup/restore tests are still required for closure.
-
-**30 Oct profile / GAP-09–12 dependencies:** Authenticated profile reads login/bootstrap identity and logout uses the shared AuthRepository; does not require a new backend endpoint. WSS subscriptions need authenticated device UUID and live authorization; each reconnect requires fresh REST snapshots because backend V1 has no replay. Invite/Call client validation can be tested in parallel but is blocked for acceptance by live lifecycle/E2E. Secure offline media stays **blocked** by pairing/trust/AEAD/key lifecycle, and CPU/battery acceptance by real devices.
+Do not interpret a completed **product-scope decision** (GAP-20) as completed cross-network media functionality.

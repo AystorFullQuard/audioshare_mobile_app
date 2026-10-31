@@ -1,7 +1,7 @@
 # SvReMobile — Android / ServerRelay integration roadmap
 
-**Source:** latest verifiable 29 October patched SvReMobile full-source package, cross-checked with supplied ServerRelay backend/OpenAPI. The requested 30 October 11:32 EET working-tree snapshot is not available for independent verification. Owner reports current local tests pass. R01–R04 remain accepted.
-**Current integration (30 Oct owner acceptance / patch scope):** owner confirms all JVM and Android instrumentation tests pass and local ServerRelay login succeeds. Existing GAP-07 client-origin/HTTPS/debug isolation and GAP-08 encrypted session storage are now ✅ for their verified mobile scope. GAP-09 adds bounded, version-checked signaling, opt-in reconnect/backoff, resubscription and snapshot-required notifications; GAP-10 validates REST control identifiers. GAP-11 blocks insecure legacy UDP audio service entry points until authenticated encryption and pairing exist. GAP-12 bounds realtime buffers/retries, opt-in discovery duration and lifecycle work. These newly changed paths are 🟡 until rerun and real-device/backend integration. Authenticated avatar now opens My Profile with account details and logout; guest avatar still opens login. No offline media security or realtime production acceptance is claimed.
+**Source:** latest available 30 October patched SvReMobile full-source package, cross-checked with the supplied ServerRelay OpenAPI. The requested 31 October 13:06 EET working-tree snapshot is not independently available. Owner reports current local tests pass. R01–R04 remain accepted.
+**Current integration (31 Oct patch):** owner reports all pre-patch unit and Android tests pass (0 failures), and local ServerRelay login works. GAP-00–08/20/22 are accepted for prior tested mobile scope. GAP-09–10 now provide opt-in room-scoped WSS reconnect/resubscription/REST refresh and invite/call REST controls in the room screen. GAP-11 provides manually verified P-256 ECDH and directional AES-GCM/replay groundwork **without enabling media**. GAP-12 bounds runtime work; GAP-13 defines Android media-service permission/type policy; GAP-14 checks HTTP route parity. These new or extended steps are 🟡 until new tests and live backend/device gates pass.
 **Backend contract authority:** actual `ServerRelay/boot/src/main/java/sv/re/controller/`, `ServerRelay/dto/src/main/java/`, `ServerRelay/docs/src/main/docs/bootstrap/DEVICE_BOOTSTRAP_JOINT_CONTRACT_V1.md`, `security/SEC05_CSRF_CLIENT_CONTRACT.md`, and `realtime/` documents. **Do not use old mobile mock fixtures as proof of compatibility.**
 **Cross-references:** [integration GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [dependency table](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [architecture and security decisions](SVREMOBILE_ARCHITECTURE_SECURITY_DECISIONS.md) · [entity contract](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md) · [endpoint matrix and JWT/CSRF rules](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
 
@@ -9,7 +9,7 @@
 
 | Symbol | Meaning | Rule |
 |---|---|---|
-| ✅ | Verified / accepted for the *specific described scope* | ✅ applies to GAP-00–08/20/22 for previously implemented, owner-tested client scope. Newly changed GAP-09–12/profile behavior requires its own rerun; production TLS and offline security remain separate. |
+| ✅ | Verified / accepted for the *specific described scope* | ✅ applies to GAP-00–08/20/22 for previously implemented, owner-tested client scope. Newly changed GAP-09–14 behavior requires its own rerun; production TLS and offline security remain separate. |
 | 🟡 | Partially present, under review, or decision pending | Existing classes do **not** demonstrate interoperability or release acceptance. |
 | ⬜ | Planned | No accepted implementation evidence for this step. |
 | ❌ | Confirmed blocker/incompatible candidate behavior | Static code-versus-contract mismatch or release-insecure configuration has been identified. |
@@ -18,7 +18,7 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 
 ## Overall completion
 
-**Owner-accepted planning/code items:** `15/104` (3 ANL plus GAP-00–08/20/22, scoped to prior implementation). Owner reports **all Android instrumentation and JVM tests pass** and live local login works. This patch has not been run on the owner’s devices; newly added profile navigation and GAP-09–12 improvements remain under test. GAP-11 explicitly disables the unsafe unencrypted UDP media prototype rather than claiming offline hosting now works. No remote internet media or production launch is implied.
+**Owner-accepted planning/code items:** `18/104` (3 ANL plus GAP-00–08/20/22, scoped to prior implementation). Owner reports **all Android instrumentation and JVM tests pass** and live local login works. The 31 October GAP-09–14 patch has not been run on the owner’s devices; previous passing results do not validate its new code. GAP-11 explicitly disables the unsafe unencrypted UDP media prototype rather than claiming offline hosting now works. No remote internet media or production launch is implied.
 
 | Stage | Status | Bar — verified steps | Priority / dependency |
 |---|---|---|---|
@@ -26,12 +26,12 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 | **ANL** — Baseline and project understanding | ✅ | `████████████` 3/3 | Gate 0 product answers recorded; security design continues |
 | **ARCH** — Mobile architecture and ownership | 🟡 | `░░░░░░░░░░░░` 0/3 | Gate 0 / ANL |
 | **ENV** — Environments and network routing | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / SEC |
-| **SEC** — Client and local security | 🟡 | `██░░░░░░░░░░` 1/6 | P0 / hosting and threat model |
+| **SEC** — Client and local security | 🟡 | `████░░░░░░░░` 2/6 | P0 / hosting and threat model |
 | **AUTH** — Identity and session flows | 🟡 | `░░░░░░░░░░░░` 0/4 | P0 / CSRF, transport |
 | **DEV** — Installation and device binding | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / AUTH, installation identity |
 | **BOOT** — Session bootstrap | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / DEV |
 | **ROOM** — Rooms and memberships | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / BOOT |
-| **PRES** — Presence | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / BOOT/ROOM |
+| **PRES** — Presence | 🟡 | `████░░░░░░░░` 1/3 | P1 / BOOT/ROOM |
 | **INV** — Invites and QR admission | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / ROOM |
 | **CALL** — CallSession control plane | 🟡 | `░░░░░░░░░░░░` 0/3 | P1 / ROOM |
 | **RT** — Realtime signaling | 🟡 | `░░░░░░░░░░░░` 0/4 | P1 / AUTH/DEV/ROOM |
@@ -42,7 +42,7 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 | **PERF** — Energy, CPU/GPU, RAM/ROM efficiency | ⬜ | `░░░░░░░░░░░░` 0/5 | Cross-cutting / baseline first |
 | **OBS** — Runtime observability | ⬜ | `░░░░░░░░░░░░` 0/3 | Cross-cutting / security |
 | **LOG** — Logging and support | 🟡 | `░░░░░░░░░░░░` 0/3 | Cross-cutting / security |
-| **TEST** — Integration, regression and physical-device gates | 🟡 | `░░░░░░░░░░░░` 0/5 | Cross-cutting / all features |
+| **TEST** — Integration, regression and physical-device gates | 🟡 | `██░░░░░░░░░░` 1/5 | Cross-cutting / all features |
 | **CI** — Build/release pipeline | ⬜ | `░░░░░░░░░░░░` 0/3 | Before release |
 | **PROD** — Production and operations | ⬜ | `░░░░░░░░░░░░` 0/4 | Last gate / all |
 
@@ -71,16 +71,15 @@ Full stage dependencies: [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.
 - **Offline/hotspot:** **accepted requirement:** two or more phones discover and exchange calls/one-way audio on local hotspot/LAN **with no internet and no cloud calls**. QR/PIN pairing, explicit host approval, remembered trusted devices and mandatory authenticated encryption are required. **Only an installation with a previously successful ServerRelay login may host/create offline rooms; historical login alone is not permanent authorization.** Offline capability uses bounded, device-bound local grants and distinct local room authority. No first-ever offline hosting, no implicit server privilege, and no automatic migration from local rooms to cloud rooms. Grant TTL, account sign-out/revocation and trusted rejoin behavior require a security-design decision before implementation.
 - **Media path:** first accept **1:1 low-latency interactive audio calls**, then **one-way host→two listeners audio share**, with unauthenticated guests admitted *only to one-way audio share* after explicit manual host approval. Video calls and **camera upgrade during audio calls** remain a separate later stage. Benchmark and select an encrypted media stack (WebRTC/Opus/DTLS-SRTP is a candidate, not an approved dependency); no production audio through the backend raw-audio WebSocket. **V1 media is nearby hotspot/LAN only**, not remote cross-internet/NAT calls; TURN/SFU is deferred.
 - **Local-cloud transition:** offline media and decisions continue while cloud is unreachable; connectivity callbacks may prompt bounded, authenticated policy/session checks and token renewal **only after real server reachability**. Apply offline cached/local policy when no cloud is reachable; never imply a revoked account has been verified offline. Reconnection cannot silently trust a local room as an online room or drop the working local call. **Background audio:** continue active calls with screen off/app background when Android permissions and foreground-service restrictions allow, with an active user-visible notification, predictable cleanup and battery limits; do not assume background camera capture is permitted. **Development & distribution:** initial backend on local Docker Compose; three physical Android devices (model/OS details pending) for tests; Google Play distribution later. **Privacy:** local, redacted, bounded diagnostics first, no recording or uploading media.
-- **Acceptance:** per-step code + tests + measured real-device evidence + owner sign-off before ✅; CI success from either project does not imply a cross-project E2E green gate. New code and end-to-end integration not verified in this revision.
+- **Acceptance:** previously owner-accepted scope retains ✅; new code requires its own tests and end-to-end evidence before ✅. 0 reported previous test failures does not prove new functionality. The owner reports previous JVM and Android suites pass (0 failures); new 31 October code and end-to-end integration are not verified in this revision.
 
 ## Stages and steps
 
 Each row is deliberately brief: **status + step + what exists / what closure means**. Full investigative detail and decisions are in the linked companion files.
 
-### GAP — Integration blockers (`██████░░░░░░` 11/23)
+### GAP — Integration blockers (`██████░░░░░░` 11/23 accepted)
 
-**GAP-00 ✅** network · **01 ✅** device route · **02 ✅** installation ID · **03 ✅** bootstrap request · **04 ✅** response · **05 ✅** server-owned presence · **06 ✅** CSRF/JWT · **07 ✅** origin-bound client transport · **08 ✅** encrypted token storage · **09 🟡** bounded WSS resubscription · **10 🟡** validated invite/call APIs · **11 🟡** unsafe UDP blocked, secure LAN pending · **12 🟡** bounded background work, profiling pending · **20 ✅** scope · **22 ✅** mobile entities. New profile and GAP-09–12 changes require Android/Docker E2E verification. [Endpoint register](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
-
+**00–08 ✅** network · registration · installation ID · bootstrap request/response · presence · CSRF/JWT · origin-safe transport · encrypted session · **09 🟡** reconnecting WSS + REST resnapshot · **10 🟡** invite/call UI control · **11 🟡** ECDH/AEAD groundwork; unsafe UDP still blocked · **12 🟡** bounded runtime work · **13 🟡** Android service-mode policy · **14 🟡** OpenAPI route checker · **15–19 ⬜** offline grant/trust, media, cloud sync and Play gate · **20 ✅** LAN-only v1 scope · **21 ⬜** background audio/role limits · **22 ✅** entity model. See [individual GAP dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) and [contract matrix](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md). New 31 October code requires Android and real-server verification before acceptance.
 
 ### ANL — Baseline and project understanding  (`████████████` 3/3)
 
@@ -103,11 +102,11 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 ### SEC — Client and local security  (`██░░░░░░░░░░` 1/6)
 
 - ✅ **SEC-00** — Backend-compatible CSRF preparation with origin-bound cookie + masked-header pairing implemented and owner-tested with local login.
-- ⬜ **SEC-01** — Protect credential and installation identity storage; exclude sensitive state from backup/transfer.
+- ✅ **SEC-01** — AndroidKeyStore-encrypted session secrets; persistent installation identity and backup/transfer exclusions verified in previously accepted tests. Device compromise remains out of scope.
 - 🟡 **SEC-02** — GAP-00 disables network BODY logs; GAP-06 removed auth token fragments and login credential/response logs in touched code. Full logging audit remains open.
 - ⬜ **SEC-03** — Design QR/PIN identity binding, explicit host approval, remembered-device rejoin policy and authenticated media encryption/anti-replay.
 - ⬜ **SEC-04** — Build threat model: token theft, room takeover, spoof/replay, rogue hotspot, downgrade, revocation.
-- ⬜ **SEC-05** — Security acceptance tests, abuse/rate limiting and Android permission review.
+- 🟡 **SEC-05** — MediaServicePolicy preflight and permission/type manifest prepared for Android 14+; physical-device background/FGS admission tests remain open.
 
 ### AUTH — Identity and session flows  (`░░░░░░░░░░░░` 0/4)
 
@@ -136,27 +135,27 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 ### PRES — Presence  (`░░░░░░░░░░░░` 0/3)
 
-- ❌ **PRES-00** — Replace legacy state enum response with server availability/activity/preference contract.
+- ✅ **PRES-00** — Heartbeat response maps server availability/activity/preference and device ID; accepted JVM/Android tests from owner.
 - 🟡 **PRES-01** — Heartbeat, lifecycle coordinator and room poller exist; measure and gate network load.
 - ⬜ **PRES-02** — Implement foreground/activity policy, server projections and event-driven reconciliation.
 
 ### INV — Invites and QR admission  (`░░░░░░░░░░░░` 0/3)
 
-- ⬜ **INV-00** — Server-side invite/QR creation, revoke, expiry and idempotency contract mapped to mobile.
+- 🟡 **INV-00** — Server invite create/list/revoke and one-use short-expiry code available in online room UI; backend E2E, QR view and idempotency pending.
 - ⬜ **INV-01** — Join via invite/deep link/QR with authorization and duplicate/expired token UX.
 - ⬜ **INV-02** — Manual host approval for guests **only in one-way audio share** for v1; no guest interactive call, video access or room creation. Separate local QR/PIN pairing tokens from backend invites and roles.
 
 ### CALL — CallSession control plane  (`░░░░░░░░░░░░` 0/3)
 
-- ⬜ **CALL-00** — Map online call create/join/leave/end REST V1 and independent LAN control; V1 nearby media only; model 1:1 audio, one-way host+two listeners, later video/camera upgrade as separate modes.
+- 🟡 **CALL-00** — Online REST create/current/join/leave/end controls available in room UI; does not activate microphone/media. 1:1, host+2 and LAN authority still open.
 - ⬜ **CALL-01** — Per-mode role checks: account-bound host, 1:1 authenticated interactive audio, manually host-approved guests only on one-way share; lifecycle and call transitions.
 - ⬜ **CALL-02** — Call control vs media independence and reconciliation tests accepted.
 
 ### RT — Realtime signaling  (`░░░░░░░░░░░░` 0/4)
 
-- ⬜ **RT-00** — Native authenticated WSS client with bearer + X-AudioShare-Device-Id handshake.
-- ⬜ **RT-01** — Envelope/event subscription, snapshot reconciliation, deduplication and version checks.
-- ⬜ **RT-02** — Reconnect backoff, expiry/revocation, HTTP 429/503 Retry-After, resubscribe and cancellation.
+- 🟡 **RT-00** — Authenticated opt-in `/ws/realtime` with Bearer and server device ID; room view opens/closes the socket.
+- 🟡 **RT-01** — Versioned inbound envelope, duplicate and size caps; subscribe and REST snapshot refresh after every handshake. Server-authoritative E2E pending.
+- 🟡 **RT-02** — Bounded backoff/stop on 401/403/429; revocation and Retry-After E2E not yet accepted.
 - ⬜ **RT-03** — Foreground/background WebSocket lifecycle, battery limits and real server acceptance.
 
 ### OFF — Local hotspot without internet  (`░░░░░░░░░░░░` 0/5)
@@ -164,7 +163,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 - 🟡 **OFF-00** — UDP discovery/receiver/sender prototype exists; it is not an authenticated offline protocol.
 - ⬜ **OFF-01** — Implement cloud-free local rooms/discovery restricted to previously authenticated installations with **bounded offline host grants**, four mandatory security controls and independent local room IDs; specify logout/account-switch/expired-grant behavior.
 - ⬜ **OFF-02** — Build discovery over same-LAN hotspot (NSD) with Wi-Fi Direct/local-only-hotspot fallback where supported; handle IP churn, host loss and partitions.
-- ⬜ **OFF-03** — Independently authorized local control/events, forward-secret encrypted media, anti-replay, key rotation, peer quotas, trust invalidation, host+two-listener cap and guest restrictions.
+- 🟡 **OFF-03** — P-256 ephemeral ECDH, out-of-band six-digit verification and directional AES-GCM + replay window groundwork; secure discovery/admission/trust persistence, key rotation, local control and media integration remain blocked.
 - ⬜ **OFF-04** — Cloud-return checks policy/session/refresh automatically when reachable; local events do not become cloud events without explicitly approved mapping.
 
 ### AUD — Audio transport and media runtime  (`░░░░░░░░░░░░` 0/4)
@@ -191,7 +190,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 ### PERF — Energy, CPU/GPU, RAM/ROM efficiency  (`░░░░░░░░░░░░` 0/5)
 
 - ⬜ **PERF-00** — Baseline idle, hotspot, 1:1 interactive audio, one-way host+two listeners, screen-off/background audio and later camera on three phones; device models and Android versions still to be supplied.
-- ⬜ **PERF-01** — Presence polling / WSS / discovery cadence policy with exponential backoff, batching, no busy loops.
+- 🟡 **PERF-01** — RuntimeWorkBudget and bounded WSS/discovery/poll caps; physical power/thermal benchmarks remain open.
 - ⬜ **PERF-02** — Audio ring buffer reuse, bounded allocation, efficient codecs and network-energy profile.
 - ⬜ **PERF-03** — Memory leak, heap-growth, disk-cache/retention, cancellation, service/socket teardown gates.
 - ⬜ **PERF-04** — Define per-device performance budgets and soak tests; avoid claiming universal fixed RAM/CPU ceilings.
@@ -210,7 +209,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 ### TEST — Integration, regression and physical-device gates  (`░░░░░░░░░░░░` 0/5)
 
-- 🟡 **TEST-00** — JVM/MockWebServer suite passes according to the owner. Android instrumentation run reported 59 failures (mostly lost Compose hierarchy / no resumed Activity, with emulator display OFF); test-only awake/unlocked precondition added; rerun is required before acceptance. Contract fixtures still need backend E2E checks.
+- ✅ **TEST-00** — Owner confirms all existing unit tests and Android instrumentation tests pass (0 failures) as of 31 October. New work in this revision is not included in that result.
 - ⬜ **TEST-01** — Contract-derived fixtures/OpenAPI checks + real ServeRelay docker integration journeys.
 - ⬜ **TEST-02** — Three-phone (models and Android versions TBD) hotspot/no-internet/airplane/no-cellular/guest-admission/host+2/background locked-screen/revocation/network-switching/DNS/TLS matrix.
 - ⬜ **TEST-03** — Battery/CPU/RAM/ROM soak, thermal, cold start, repeated connect/disconnect and leak checks.
@@ -235,7 +234,7 @@ Each row is deliberately brief: **status + step + what exists / what closure mea
 
 **Quality gates (proposed, measurable thresholds must be approved):** startup and idle vs active-stream baseline, average/peak CPU, mAh/hour and thermal impact, PSS/Java/native heap after 30/120 minute soak, disk growth by active-day, bounded audio queues/packet sizes and reconnect counts; 1/2/3+ phones with airplane, hotspot, captive LAN, OS kill, app background, network switch, and token expiry. Avoid arbitrary numerical promises before recording baseline phone models and expected quality.
 
-**Verification:** policy Kotlin syntax/smoke tests and documentation/source checks run locally where possible; full Android Gradle build, instrumentation, live ServerRelay and physical-device acceptance remain **unverified**. No ServerRelay source changed.
+**Verification:** stand-alone Kotlin crypto/policy budget smoke check and OpenAPI 37-operation/25-route checker run locally. Previous owner-reported JVM + Android suites passed with zero failures. Full Gradle, new instrumentation, live `/ws/realtime` and three-phone acceptance for the 31 October patch remain **unverified**. No ServerRelay source changed.
 
 ## Official platform references
 

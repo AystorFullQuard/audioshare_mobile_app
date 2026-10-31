@@ -54,6 +54,8 @@ import mme.corp.audioshare.data.dto.room.RoomVisibility
 import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.data.model.room.RoomMember
 import mme.corp.audioshare.room.RoomSessionCoordinator
+import mme.corp.audioshare.room.OnlineCallCoordinator
+import mme.corp.audioshare.data.repository.InviteRepository
 import mme.corp.audioshare.room.RoomSessionOperation
 
 private val DEFAULT_MEMBER_POLLING_CONFIG = MemberPresencePollingConfig(
@@ -79,7 +81,9 @@ fun RoomScreen(
     roomId: String,
     coordinator: RoomSessionCoordinator,
     onNavigateRooms: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onlineCalls: OnlineCallCoordinator? = null,
+    invites: InviteRepository? = null
 ) {
     val factory = remember(coordinator) {
         RoomsViewModelFactory(coordinator)
@@ -90,7 +94,9 @@ fun RoomScreen(
         roomId = roomId,
         viewModel = roomsViewModel,
         onNavigateRooms = onNavigateRooms,
-        modifier = modifier
+        modifier = modifier,
+        onlineCalls = onlineCalls,
+        invites = invites
     )
 }
 
@@ -101,7 +107,9 @@ internal fun RoomScreen(
     onNavigateRooms: () -> Unit,
     modifier: Modifier = Modifier,
     memberPollingConfig: MemberPresencePollingConfig =
-        DEFAULT_MEMBER_POLLING_CONFIG
+        DEFAULT_MEMBER_POLLING_CONFIG,
+    onlineCalls: OnlineCallCoordinator? = null,
+    invites: InviteRepository? = null
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -164,6 +172,9 @@ internal fun RoomScreen(
             onBack = {
                 viewModel.onAction(RoomsUiAction.DeactivateCurrentRoom)
             },
+            callControls = if (onlineCalls != null && invites != null) {
+                { OnlineRoomControls(roomId, onlineCalls, invites) }
+            } else null,
             modifier = Modifier.padding(contentPadding)
         )
     }
@@ -175,7 +186,8 @@ fun RoomScreenContent(
     state: RoomsUiState,
     onAction: (RoomsUiAction) -> Unit,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    callControls: (@Composable () -> Unit)? = null
 ) {
     val presentation = state.toRoomScreenPresentation(roomId)
 
@@ -184,7 +196,8 @@ fun RoomScreenContent(
         presentation = presentation,
         onAction = onAction,
         onBack = onBack,
-        modifier = modifier
+        modifier = modifier,
+        callControls = callControls
     )
 
     state.confirmation?.let { confirmation ->
@@ -203,7 +216,8 @@ private fun RoomScreenList(
     presentation: RoomScreenPresentation,
     onAction: (RoomsUiAction) -> Unit,
     onBack: () -> Unit,
-    modifier: Modifier
+    modifier: Modifier,
+    callControls: (@Composable () -> Unit)? = null
 ) {
     LazyColumn(
         modifier = modifier
@@ -298,6 +312,8 @@ private fun RoomScreenList(
                 RoomMemberRow(member)
             }
 
+            if (callControls != null) item { callControls() }
+
             item {
                 RoomLifecycleActions(
                     role = activeRoom.currentUserRole,
@@ -331,11 +347,11 @@ private fun RoomsUiState.toRoomScreenPresentation(
     }
     val members = activeMembers.filter { member ->
         member.roomId == roomId &&
-            member.membershipState == RoomMemberState.ACTIVE
+                member.membershipState == RoomMemberState.ACTIVE
     }
     val relevantError = session.lastError?.takeIf { error ->
         error.operation in ROOM_DETAILS_ERROR_OPERATIONS &&
-            (error.roomId == null || error.roomId == roomId)
+                (error.roomId == null || error.roomId == roomId)
     }
     val message = relevantError?.let { sessionErrorMessage }
     val loading = isInteractionBlocked || roomDetailsRoomId != roomId
@@ -347,7 +363,7 @@ private fun RoomsUiState.toRoomScreenPresentation(
         retryAction = relevantError
             ?.takeIf { error ->
                 error.retryable &&
-                    error.operation in ROOM_DETAILS_RETRY_OPERATIONS
+                        error.operation in ROOM_DETAILS_RETRY_OPERATIONS
             }
             ?.operation
             ?.toRoomDetailsRetryAction(),
@@ -407,6 +423,7 @@ private fun RoomConnectionStatusCard(
             text = when {
                 !isConnected && isStale ->
                     "Offline. Showing the last confirmed room state."
+
                 !isConnected -> "ServeRelay is currently unavailable."
                 else -> "Room information may be out of date."
             },
@@ -551,6 +568,7 @@ private fun RoomLifecycleActions(
                 Text("Archive room")
             }
         }
+
         RoomMemberRole.MEMBER -> {
             OutlinedButton(
                 modifier = Modifier
@@ -564,6 +582,7 @@ private fun RoomLifecycleActions(
                 Text("Leave room")
             }
         }
+
         null -> Unit
     }
 }
@@ -634,6 +653,7 @@ private fun RoomSessionOperation.toRoomDetailsRetryAction(): RoomsUiAction =
         RoomSessionOperation.DEACTIVATE -> RoomsUiAction.DeactivateCurrentRoom
         RoomSessionOperation.REFRESH_ROOM,
         RoomSessionOperation.REFRESH_MEMBERS -> RoomsUiAction.RefreshCurrentRoom
+
         else -> RoomsUiAction.RetryRoomDetails
     }
 

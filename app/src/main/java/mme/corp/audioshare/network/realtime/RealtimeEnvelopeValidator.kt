@@ -4,7 +4,7 @@ import com.google.gson.JsonParser
 import java.util.UUID
 
 /** Accept only bounded, versioned backend signaling envelopes. Never deserialize media here. */
-internal data class ServerSignal(
+data class ServerSignal(
     val type: String,
     val eventId: String,
     val roomId: String?,

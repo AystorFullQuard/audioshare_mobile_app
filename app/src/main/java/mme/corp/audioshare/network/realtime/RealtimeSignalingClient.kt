@@ -12,6 +12,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import mme.corp.audioshare.runtime.RuntimeWorkBudget
 import mme.corp.audioshare.data.storage.DeviceIdStore
 import mme.corp.audioshare.data.storage.TokenStore
 import mme.corp.audioshare.network.retrofit.NetworkConfig
@@ -42,6 +43,10 @@ class RealtimeSignalingClient(
     data class SnapshotRequest(val roomId: String?, val callId: String?)
 
     private val gson = Gson()
+    private val retryBudget = RuntimeWorkBudget(
+        foregroundPollingMillis = 1_000,
+        backgroundPollingMillis = 1_000, maxBackoffMillis = 30_000
+    )
     private val lock = Any()
     private var socket: WebSocket? = null
     private var generation = 0L
@@ -58,6 +63,10 @@ class RealtimeSignalingClient(
         extraBufferCapacity = 32,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+    val events = MutableSharedFlow<ServerSignal>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val snapshotsRequired = MutableSharedFlow<SnapshotRequest>(
         extraBufferCapacity = 16,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -66,6 +75,7 @@ class RealtimeSignalingClient(
     /** The returned success means a handshake was initiated; CONNECTED is emitted after SERVER_READY. */
     suspend fun connect(): Result<Unit> {
         synchronized(lock) {
+            if (!closedByClient && _state.value != State.DISCONNECTED) return Result.success(Unit)
             closedByClient = false
             retryJob?.cancel()
             retryJob = null
@@ -143,21 +153,40 @@ class RealtimeSignalingClient(
                             )
                         )
                     }
+                    // V1 does not replay missed events. Refresh REST snapshots after every handshake,
+                    // including the initial subscription and every reconnect.
+                    desiredRooms.forEach { id ->
+                        snapshotsRequired.tryEmit(
+                            SnapshotRequest(
+                                id,
+                                null
+                            )
+                        )
+                    }
+                    desiredCalls.forEach { id ->
+                        snapshotsRequired.tryEmit(
+                            SnapshotRequest(
+                                null,
+                                id
+                            )
+                        )
+                    }
                 }
                 if (message.type == "PING") webSocket.send(envelope("PONG"))
                 if (message.type == "SNAPSHOT_REQUIRED") {
                     snapshotsRequired.tryEmit(SnapshotRequest(message.roomId, message.callId))
                 }
+                events.tryEmit(message)
                 inbound.tryEmit(text)
             }
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            disconnected(owner, retry = response?.code !in setOf(401, 403, 429))
+            disconnected(owner, retry = response?.code !in setOf(400, 401, 403, 429))
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            disconnected(owner, retry = code !in setOf(1008, 4004, 1009))
+            disconnected(owner, retry = code !in setOf(1007, 1008, 4004, 1009))
         }
     }
 
@@ -168,7 +197,7 @@ class RealtimeSignalingClient(
             ready = false
             _state.value = State.DISCONNECTED
             if (!retry || attempts >= MAX_RETRIES) return
-            val retryDelay = (1_000L shl attempts).coerceAtMost(30_000L)
+            val retryDelay = retryBudget.nextDelay(attempts, inForeground = true)
             attempts++
             retryJob?.cancel()
             retryJob = scope.launch {
@@ -197,6 +226,11 @@ class RealtimeSignalingClient(
             if (subscribe && desiredCalls.size + desiredRooms.size >= MAX_SUBSCRIPTIONS && id !in set) return@synchronized false
             if (subscribe) set.add(id) else set.remove(id)
             if (ready) {
+                if (subscribe) snapshotsRequired.tryEmit(
+                    SnapshotRequest(
+                        if (isCall) null else id, if (isCall) id else null
+                    )
+                )
                 socket?.send(
                     envelope(
                         if (subscribe) if (isCall) "SUBSCRIBE_CALL" else "SUBSCRIBE_ROOM"

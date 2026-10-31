@@ -14,6 +14,7 @@ import mme.corp.audioshare.data.api.InvitesApi
 import mme.corp.audioshare.data.repository.CallRepository
 import mme.corp.audioshare.data.repository.InviteRepository
 import mme.corp.audioshare.network.realtime.RealtimeSignalingClient
+import mme.corp.audioshare.room.OnlineCallCoordinator
 import mme.corp.audioshare.data.api.AuthApi
 import mme.corp.audioshare.data.api.BootstrapApi
 import mme.corp.audioshare.data.api.DevicesApi
@@ -74,6 +75,7 @@ class AppContainer(
         InviteRepository(ApiClient.create(InvitesApi::class.java), sessionManager)
     val callRepository = CallRepository(ApiClient.create(CallsApi::class.java))
     val realtimeSignalingClient = RealtimeSignalingClient(sessionManager, sessionManager)
+    val onlineCallCoordinator = OnlineCallCoordinator(callRepository, realtimeSignalingClient)
 
     val bootstrapRepository = BootstrapRepository(
         bootstrapApi = bootstrapApi,

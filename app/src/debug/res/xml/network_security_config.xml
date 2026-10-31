@@ -4,7 +4,8 @@
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="IPV4">192.168.110.77</domain>
+        <!--- <domain includeSubdomains="IPV4">192.168.110.77</domain> S21Fe -->
+        <domain includeSubdomains="IPV4">192.168.18.5</domain>
         <domain includeSubdomains="LOCALHOST">localhost</domain>
     </domain-config>
 </network-security-config>

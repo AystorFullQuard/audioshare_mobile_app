@@ -27,7 +27,7 @@
 | `GET /actuator/health` | No | — | `—` → `ActuatorHealth` / 200, 503 | — | ⬜ Not in mobile scope yet |
 | `GET /actuator/health/liveness` | No | — | `—` → `HealthProbe` / 200, 503 | — | ⬜ Not in mobile scope yet |
 | `GET /actuator/health/readiness` | No | — | `—` → `HealthProbe` / 200, 503 | — | ⬜ Not in mobile scope yet |
-| `GET /api/v1/auth/csrf` | No | — | `—` → `CsrfTokenResponse` / 200, 400, 401, 406, 413, 415 | network/retrofit/CsrfProtection.kt | 🟡 Auto (CSRF GET) |
+| `GET /api/v1/auth/csrf` | No | — | `—` → `CsrfTokenResponse` / 200, 400, 401, 406, 413, 415 | ApiClient.kt + CsrfCookieJar.kt | 🟡 Auto (CSRF GET) |
 | `POST /api/v1/auth/register` | No | Cookie + X-XSRF-TOKEN | `RegisterRequest` → `LoginResponse` / 403, 200, 400, 409, 429, 503, 406, 413, 415 | — | ⬜ Not in mobile scope yet |
 | `POST /api/v1/auth/login` | No | Cookie + X-XSRF-TOKEN | `LoginRequest` → `LoginResponse` / 403, 200, 400, 401, 429, 503, 406, 413, 415 | AuthApi.kt | ✅ Endpoint declared |
 | `POST /api/v1/auth/refresh` | No | Cookie + X-XSRF-TOKEN | `RefreshTokenRequest` → `LoginResponse` / 403, 200, 400, 401, 406, 413, 415 | AuthApi.kt | ✅ Endpoint declared |
@@ -101,3 +101,13 @@ Login first GETs `/api/v1/auth/csrf` without a JWT, receives the masked `token` 
 - New signaling frames are checked for UTF-8 size, known V1 types/version, UUID event ID and optional scope. Inbound is capped, events deduplicated, reconnection is capped at five attempts and room/call subscriptions are replayed only as subscriptions, **not missed events**. On `SNAPSHOT_REQUIRED`, consumers must re-fetch authoritative snapshots. Live signaling is not automatically started.
 - Legacy UDP raw audio foreground-service starts are refused: there is **no secure local audio transport yet**, and enabling that unsafe prototype is not considered GAP-11 completion.
 - `InviteRepository` / `CallRepository` refuse malformed UUIDs before Retrofit; `CsrfInterceptor` still creates the origin-bound XSRF cookie/proof for every unsafe operation and auth refresh. `Authorization: Bearer <JWT>` remains shared, never passed by individual screens.
+
+## GAP-09–14 implementation & contract gate (31 October 2026)
+
+- **Route checker:** `python tools/verify_serverrelay_contract.py --openapi ../ServerRelay/docs/src/main/docs/api/openapi.yaml` (from project root; adapt backend path). Inspected backend OpenAPI contains **37** HTTP operations, of which Android declares **25** Retrofit routes with no unknown route. A declared route is not proof of DTO field parity, CSRF/cookie correctness, or a reachable server.
+- **Realtime:** `/ws/realtime` is not an OpenAPI HTTP operation; bearer + server device UUID handshake, `CLIENT_READY` and verified V1 envelopes. No server replay. Room view starts an opt-in session; a reconnect requests fresh REST snapshots and closes on room exit or logout.
+- **Invite/Call:** existing Retrofit interfaces map all 4 invite and 6 call operations. Room view now uses them for control and one-use time-bounded invite; call control **does not enable local audio**.
+- **Offline media:** a pair of *manually verified* ECDH public keys may derive directional AES-GCM keys, with authenticated associated data and replay window. Missing QR/host grant/local trust/storage and secure media integration still block a real offline call.
+- **Android permission policy:** microphone / mediaProjection / mediaPlayback service types declared; foreground admission requires user-facing permission/consent. Android 17/target 37 local-network policy remains future work.
+
+**Test status:** owner confirms preceding Android/JVM suite green; new GAP-09–14 changes and real backend WSS/invite/call tests have **not** been run in the current package.

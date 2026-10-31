@@ -87,6 +87,8 @@ fun AudioShareNavHost(
         roomsDestinations(
             navController = navController,
             coordinator = application.container.roomSessionCoordinator,
+            calls = application.container.onlineCallCoordinator,
+            invites = application.container.inviteRepository,
             isStartupRuntimeReady = { runtimeReady }
         )
     }

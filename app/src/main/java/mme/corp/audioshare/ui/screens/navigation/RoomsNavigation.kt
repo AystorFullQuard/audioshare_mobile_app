@@ -6,12 +6,16 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import mme.corp.audioshare.room.RoomSessionCoordinator
+import mme.corp.audioshare.room.OnlineCallCoordinator
+import mme.corp.audioshare.data.repository.InviteRepository
 import mme.corp.audioshare.ui.screens.rooms.RoomScreen
 import mme.corp.audioshare.ui.screens.rooms.RoomsScreen
 
 fun NavGraphBuilder.roomsDestinations(
     navController: NavHostController,
     coordinator: RoomSessionCoordinator,
+    calls: OnlineCallCoordinator? = null,
+    invites: InviteRepository? = null,
     isStartupRuntimeReady: () -> Boolean = { true }
 ) {
     composable(Screen.Rooms.route) {
@@ -39,6 +43,8 @@ fun NavGraphBuilder.roomsDestinations(
                     ?.getString(Screen.ROOM_ID_ARGUMENT)
                     .orEmpty(),
                 coordinator = coordinator,
+                onlineCalls = calls,
+                invites = invites,
                 onNavigateRooms = navController::returnToRooms
             )
         }
