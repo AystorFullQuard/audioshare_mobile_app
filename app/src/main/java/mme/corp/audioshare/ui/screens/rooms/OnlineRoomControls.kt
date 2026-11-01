@@ -41,14 +41,20 @@ fun OnlineRoomControls(roomId: String, calls: OnlineCallCoordinator, invites: In
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Online call controls", style = MaterialTheme.typography.titleMedium)
+            Text("Call controls", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Server control only — encrypted local audio is not yet enabled.",
-                style = MaterialTheme.typography.bodySmall
+                "Calls are managed through ServerRelay. Live media is not active yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             state.call?.let { call ->
-                Text("Call status: ${call.status}")
-                Text("Participants: ${call.participants.size}")
+                Text(
+                    "${
+                        call.status.lowercase().replaceFirstChar { it.uppercase() }
+                    } · ${call.participants.size} participants",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             if (state.roomId == roomId) state.error?.let { Text(it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -67,19 +73,21 @@ fun OnlineRoomControls(roomId: String, calls: OnlineCallCoordinator, invites: In
                 }
             }
             state.call?.takeIf { it.status != "ENDED" }?.let { call ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { coroutineScope.launch { calls.join(roomId, call.id) } },
-                        enabled = !state.busy
-                    ) { Text("Join") }
-                    OutlinedButton(
-                        onClick = { coroutineScope.launch { calls.leave(roomId, call.id) } },
-                        enabled = !state.busy
-                    ) { Text("Leave") }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { coroutineScope.launch { calls.join(roomId, call.id) } },
+                            enabled = !state.busy, modifier = Modifier.weight(1f)
+                        ) { Text("Join") }
+                        OutlinedButton(
+                            onClick = { coroutineScope.launch { calls.leave(roomId, call.id) } },
+                            enabled = !state.busy, modifier = Modifier.weight(1f)
+                        ) { Text("Leave") }
+                    }
                     OutlinedButton(
                         onClick = { coroutineScope.launch { calls.end(roomId, call.id) } },
-                        enabled = !state.busy
-                    ) { Text("End") }
+                        enabled = !state.busy, modifier = Modifier.fillMaxWidth()
+                    ) { Text("End call") }
                 }
             }
             OutlinedButton(enabled = !isInviteBusy, onClick = {

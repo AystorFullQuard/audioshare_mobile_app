@@ -163,6 +163,7 @@ internal fun RoomScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { contentPadding ->
         RoomScreenContent(
@@ -223,8 +224,8 @@ private fun RoomScreenList(
         modifier = modifier
             .fillMaxSize()
             .testTag(RoomUiTestTags.LIST)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             RoomHeader(
@@ -398,7 +399,7 @@ private fun RoomHeader(
         }
         Text(
             text = "Room",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold
         )
         TextButton(
@@ -424,7 +425,7 @@ private fun RoomConnectionStatusCard(
                 !isConnected && isStale ->
                     "Offline. Showing the last confirmed room state."
 
-                !isConnected -> "ServeRelay is currently unavailable."
+                !isConnected -> "ServerRelay is currently unavailable."
                 else -> "Room information may be out of date."
             },
             modifier = Modifier.padding(16.dp)

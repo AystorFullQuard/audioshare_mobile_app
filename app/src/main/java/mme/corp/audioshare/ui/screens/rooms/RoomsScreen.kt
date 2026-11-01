@@ -102,6 +102,7 @@ internal fun RoomsScreen(
                 when (event) {
                     is RoomsUiEvent.NavigateToRoom ->
                         onNavigateRoom(event.roomId)
+
                     RoomsUiEvent.NavigateToRooms -> onNavigateRooms()
                 }
             }
@@ -116,6 +117,7 @@ internal fun RoomsScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { contentPadding ->
         RoomsScreenContent(
@@ -145,8 +147,8 @@ fun RoomsScreenContent(
         modifier = modifier
             .fillMaxSize()
             .testTag(RoomsUiTestTags.LIST)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             RoomsHeader(
@@ -186,7 +188,7 @@ fun RoomsScreenContent(
         listErrorMessage?.let { message ->
             val canRetryLoadRooms =
                 listError.operation == RoomSessionOperation.LOAD_ROOMS &&
-                    listError.retryable
+                        listError.retryable
             item {
                 ErrorCard(
                     message = message,
@@ -282,7 +284,7 @@ private fun RoomsHeader(
             }
             Text(
                 text = "Rooms",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )
             TextButton(
@@ -306,7 +308,8 @@ private fun ConnectionStatusCard(
             text = when {
                 !isConnected && isStale ->
                     "Offline. Showing the last confirmed room state."
-                !isConnected -> "ServeRelay is currently unavailable."
+
+                !isConnected -> "ServerRelay is currently unavailable."
                 else -> "Room information may be out of date."
             },
             modifier = Modifier.padding(16.dp),
@@ -391,7 +394,7 @@ private fun CreateRoomCard(
             VisibilityOption(
                 label = "Local discovery",
                 selected = state.createVisibility ==
-                    RoomVisibility.LOCAL_DISCOVERY,
+                        RoomVisibility.LOCAL_DISCOVERY,
                 enabled = !state.isBusy,
                 testTag = RoomsUiTestTags.CREATE_LOCAL,
                 onClick = {

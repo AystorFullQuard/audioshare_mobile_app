@@ -11,6 +11,7 @@ class LocalPairingAgreementTest {
     fun codeApprovalDerivesCompatibleDirectionalKeysAndAuthenticatedFrames() {
         val host = LocalPairingAgreement(isHost = true)
         val guest = LocalPairingAgreement(isHost = false)
+        assertEquals(64, host.inspectPeer(guest.publicKeyBase64).peerFingerprint.length)
         val codeHost = host.inspectPeer(guest.publicKeyBase64).shortCode
         val codeGuest = guest.inspectPeer(host.publicKeyBase64).shortCode
         assertEquals(codeHost, codeGuest)

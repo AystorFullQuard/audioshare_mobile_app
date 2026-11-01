@@ -33,7 +33,7 @@ class LocalPairingAgreement(private val isHost: Boolean) {
         val sas = ((sha[0].toInt() and 255) shl 16) or
                 ((sha[1].toInt() and 255) shl 8) or (sha[2].toInt() and 255)
         val fingerprint = digest.digest(peer.encoded)
-            .take(8).joinToString("") { "%02x".format(it.toInt() and 255) }
+            .take(32).joinToString("") { "%02x".format(it.toInt() and 255) }
         return PairingCandidate("%06d".format(sas % 1_000_000), fingerprint)
     }
 

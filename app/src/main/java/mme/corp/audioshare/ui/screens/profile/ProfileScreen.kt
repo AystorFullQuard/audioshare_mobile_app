@@ -9,14 +9,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.AudioShareApplication
+import mme.corp.audioshare.ui.components.SvReBackAction
+import mme.corp.audioshare.ui.components.SvReInitialAvatar
+import mme.corp.audioshare.ui.components.SvRePageHeading
+import mme.corp.audioshare.ui.components.SvReSection
 
-/** Authenticated account details are sourced from the login/bootstrap response, never a fake profile. */
+/** Never displays a fake account or a raw session credential. */
 @Composable
 fun ProfileScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
     val container = (LocalContext.current.applicationContext as AudioShareApplication).container
@@ -26,26 +29,20 @@ fun ProfileScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
     var pending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-
-    // A revoked/cleared session must not leave a private page open.
     LaunchedEffect(token) { if (token.isNullOrBlank()) onLoggedOut() }
 
-    Scaffold(topBar = {
+    Scaffold(containerColor = MaterialTheme.colorScheme.background, topBar = {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(
-                onClick = onBack,
-                modifier = Modifier.testTag("profile_back")
-            ) { Text("Back") }
-            Spacer(Modifier.width(12.dp))
+            SvReBackAction(onBack, Modifier.testTag("profile_back"))
+            Spacer(Modifier.weight(1f))
             Text(
-                "My Profile",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
+                "SvRe", style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }) { padding ->
@@ -54,26 +51,45 @@ fun ProfileScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Text(user?.displayName?.takeIf { it.isNotBlank() } ?: "Signed-in account",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.testTag("profile_display_name"))
-            ProfileField("Username", user?.username)
-            ProfileField("Email", user?.email)
-            ProfileField("Account ID", user?.id ?: userId)
-            ProfileField("Appearance", user?.settings?.theme)
-            Text(
-                "Profile information is provided by ServerRelay. Account settings cannot be edited here yet.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                SvReInitialAvatar(user?.displayName?.firstOrNull()?.uppercaseChar()?.toString())
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SvRePageHeading("My profile", "ServerRelay account")
+                }
+            }
+            SvReSection {
+                Text(user?.displayName?.takeIf { it.isNotBlank() } ?: "Signed-in account",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.testTag("profile_display_name"))
+                ProfileField("Username", user?.username)
+                ProfileField("Email", user?.email)
+                ProfileField("Account ID", user?.id ?: userId)
+            }
+            SvReSection {
+                Text("Appearance", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    user?.settings?.theme ?: "Default",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Your preferences are provided by ServerRelay. Editing is not available yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             OutlinedButton(
                 enabled = !pending,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .testTag("profile_logout"),
                 onClick = {
                     if (pending) return@OutlinedButton
@@ -87,7 +103,7 @@ fun ProfileScreen(onBack: () -> Unit, onLoggedOut: () -> Unit) {
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
-                            error = "Could not clear your local session. Try again."
+                            error = "Unable to sign out. Try again."
                         } finally {
                             pending = false
                         }
@@ -106,7 +122,7 @@ private fun ProfileField(label: String, value: String?) {
                 label, style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(value, style = MaterialTheme.typography.bodyLarge)
+            Text(value, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

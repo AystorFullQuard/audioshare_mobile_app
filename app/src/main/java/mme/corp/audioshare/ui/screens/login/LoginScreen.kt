@@ -1,6 +1,8 @@
 package mme.corp.audioshare.ui.screens.login
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -19,78 +21,90 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import mme.corp.audioshare.AudioShareApplication
 import mme.corp.audioshare.BuildConfig
 import mme.corp.audioshare.network.retrofit.NetworkConfig
+import mme.corp.audioshare.ui.components.SvReBackAction
+import mme.corp.audioshare.ui.components.SvRePageHeading
+import mme.corp.audioshare.ui.components.SvReSection
 
+/** Login stays optional at startup and never exposes sensitive CSRF/JWT details in UI. */
 @Composable
 fun LoginScreen(onBack: () -> Unit, onLoginSuccess: () -> Unit) {
-    val application = LocalContext.current.applicationContext as AudioShareApplication
-    val viewModel: LoginViewModel = viewModel(
-        factory = LoginViewModel.Factory(application.container.authRepository)
-    )
+    val app = LocalContext.current.applicationContext as AudioShareApplication
+    val viewModel: LoginViewModel =
+        viewModel(factory = LoginViewModel.Factory(app.container.authRepository))
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(ui.isLoggedIn) { if (ui.isLoggedIn) onLoginSuccess() }
 
-    Surface(Modifier.fillMaxSize()) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text("Sign in to SvRe", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(24.dp))
-            OutlinedTextField(
-                value = ui.login,
-                onValueChange = viewModel::updateLogin,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_username"),
-                singleLine = true,
-                label = { Text("Username or email") },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = ui.password,
-                onValueChange = viewModel::updatePassword,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_password"),
-                singleLine = true,
-                label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                SvReBackAction(onBack)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "SvRe", style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            )
-            ui.error?.let { error ->
-                Spacer(Modifier.height(12.dp))
-                Text(error, color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = viewModel::login,
-                enabled = !ui.isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_submit")
-            ) {
-                if (ui.isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                else Text("Sign in")
+            SvRePageHeading("Sign in", "Connect to your ServerRelay account to manage rooms")
+            SvReSection {
+                OutlinedTextField(
+                    value = ui.login, onValueChange = viewModel::updateLogin,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("login_username"),
+                    singleLine = true, label = { Text("Username or email") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                )
+                OutlinedTextField(
+                    value = ui.password,
+                    onValueChange = viewModel::updatePassword,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("login_password"),
+                    singleLine = true,
+                    label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done
+                    )
+                )
+                ui.error?.let {
+                    Text(
+                        it, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Button(
+                    onClick = viewModel::login, enabled = !ui.isLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("login_submit")
+                ) {
+                    if (ui.isLoading) CircularProgressIndicator(
+                        Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    else Text("Sign in")
+                }
             }
-            TextButton(onClick = onBack) { Text("Back to home") }
             if (BuildConfig.DEBUG) {
-                Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Debug backend: ${NetworkConfig.BASE_URL}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "Development server · ${NetworkConfig.BASE_URL}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
                 )
                 Text(
-                    text = "Emulator: 10.0.2.2 · Physical phone: use your PC LAN IPv4 in gradle.properties and debug network security XML.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    "Emulator: 10.0.2.2 · Physical device: configure your PC's private IPv4 in Gradle and debug network security",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
                 )
             }
         }

@@ -1,57 +1,60 @@
 package mme.corp.audioshare.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+/** Stable SvRe palette across Home, Login, Profile, Rooms and Call controls. */
+private val DarkColors = darkColorScheme(
+    primary = SvReAccent,
+    onPrimary = SvReInk,
+    secondary = SvReMuted,
+    onSecondary = SvReInk,
+    background = SvReInk,
+    onBackground = SvReText,
+    surface = SvReSurface,
+    onSurface = SvReText,
+    surfaceVariant = SvReRaised,
+    onSurfaceVariant = SvReMuted,
+    outline = SvReBorder,
+    outlineVariant = SvReBorder,
+    error = androidx.compose.ui.graphics.Color(0xFFF2A59F)
 )
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+private val LightColors = lightColorScheme(
+    primary = SvReLightAccent,
+    onPrimary = androidx.compose.ui.graphics.Color.White,
+    secondary = androidx.compose.ui.graphics.Color(0xFF49645B),
+    onSecondary = androidx.compose.ui.graphics.Color.White,
+    background = SvReLightBackground,
+    onBackground = SvReLightText,
+    surface = SvReLightSurface,
+    onSurface = SvReLightText,
+    surfaceVariant = androidx.compose.ui.graphics.Color(0xFFEDF2EF),
+    onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFF52625D),
+    outline = androidx.compose.ui.graphics.Color(0xFFCFDAD5),
+    outlineVariant = androidx.compose.ui.graphics.Color(0xFFDAE3DF)
 )
 
 @Composable
 fun AudioShareTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Kept for call-site compatibility; dynamic wallpaper colors would break the SvRe system.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = Typography,
+        shapes = Shapes(
+            small = RoundedCornerShape(10.dp),
+            medium = RoundedCornerShape(14.dp),
+            large = RoundedCornerShape(20.dp)
+        ),
         content = content
     )
 }

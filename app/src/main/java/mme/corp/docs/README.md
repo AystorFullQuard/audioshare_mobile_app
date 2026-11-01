@@ -24,3 +24,7 @@ Device registration now posts `installationId` to `/api/v1/devices/register`. It
 5. Emulator testing requires no IP edits (`10.0.2.2:8090`). Production builds reject cleartext HTTP. No JWT is entered manually: the repository stores login tokens, and the shared client attaches `Authorization: Bearer …` to protected requests and CSRF proof where needed.
 
 **Revision note:** requested 30 October 11:32 EET working-tree state could not be independently recovered; patch is based on the latest verifiable 29 October Login/AndroidTest full-source package. Newly added profile and GAP-09–12 changes need Android tests and live backend sign-off; legacy unencrypted UDP audio is intentionally disabled pending authenticated media and pairing.
+
+## UI and offline policy (1 November review)
+
+The Compose Home, Login and Profile screens share a neutral SvRe appearance; Rooms and Call controls use the same Material3 theme and responsive spacing. The interface follows the UI craft principles reviewed in [Unslop](https://github.com/heydamir/unslop) (Damir Sokolovsky, CC BY 4.0). The Android trust/policy code in `network/local/` is opt-in and default-deny; **offline hosting and media are not operational** until GAP-15/16 integration and device tests pass. No changes to ServerRelay were made.

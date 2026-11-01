@@ -2,7 +2,7 @@
 
 **Reference:** [main roadmap](SVREMOBILE_ROADMAP.md) · [GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [endpoint contract](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
 
-Legend: ✅ accepted implemented scope · 🟡 partly implemented, new changes pending verification · ⬜ planned / not delivered · ❌ confirmed blocker. The owner reports prior unit and Android suites passing (0 failures); the 31 October patch still needs its own run.
+Legend: ✅ accepted implemented scope · 🟡 partly implemented, new changes pending verification · ⬜ planned / not delivered · ❌ confirmed blocker. The owner reports unit and Android suites passing (0 failures) before this 1 November UI/GAP-16 revision, which still needs its own run.
 
 ## GAP status tree — every item explicitly listed
 
@@ -29,7 +29,7 @@ GAP ██████░░░░░░ 11/23 accepted (47.8%); new GAP-09–14
 │  └─ GAP-13 🟡 Android microphone/projection/playback FGS rules
 └─ FUTURE ENTITLEMENT / RELEASE
    ├─ GAP-15 ⬜ prior-online-login offline host grant
-   ├─ GAP-16 ⬜ trusted local peer/host approval & offline ACL
+   ├─ GAP-16 🟡 default-deny local host/peer ACL and encrypted trust store; QR/grant/media unwired
    ├─ GAP-17 ⬜ 1:1 audio then host+2 and video later
    ├─ GAP-18 ⬜ cloud return token/policy reconciliation
    ├─ GAP-19 ⬜ Google Play release/privacy/permissions
@@ -81,7 +81,7 @@ ANL ✅ 3/3 planning inventory, backend contracts and accepted requirements
 | GAP-13 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-11/12, explicit consent, device tests |
 | GAP-14 | 🟡 | Implemented partially; verify & extend | TEST, PERF, docs | GAP-09/10, full DTO/live contract tests |
 | GAP-15 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | AUTH-03, SEC-03, expiry/revocation semantics |
-| GAP-16 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-11/15, host control |
+| GAP-16 | 🟡 | Policy and encrypted trust storage implemented; wire and verify | SEC, OFF, SYNC, TEST | GAP-15 entitlement, QR/host UI, pairing transport, logout cleanup, real devices |
 | GAP-17 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-11/13/16, AUD/VID acceptance |
 | GAP-18 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | ENV-02, SYNC-00..03 |
 | GAP-19 | ⬜ | Design/prototype now | SEC, OFF, SYNC, CI | GAP-13, PROD/CI, device evidence |

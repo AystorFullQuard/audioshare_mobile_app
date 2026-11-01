@@ -111,3 +111,7 @@ Login first GETs `/api/v1/auth/csrf` without a JWT, receives the masked `token` 
 - **Android permission policy:** microphone / mediaProjection / mediaPlayback service types declared; foreground admission requires user-facing permission/consent. Android 17/target 37 local-network policy remains future work.
 
 **Test status:** owner confirms preceding Android/JVM suite green; new GAP-09–14 changes and real backend WSS/invite/call tests have **not** been run in the current package.
+
+### 1 November static contract recheck
+
+Compared the Android Retrofit sources against the supplied ServerRelay `docs/src/main/docs/api/openapi.yaml`: 37 backend HTTP operations, 25 Android routes and **0 unknown client routes**. Remaining 12 operations are outside current client coverage. The current API origin, CSRF proof/cookie flow, JWT bearer interceptor, device registration (`installationId`) and bootstrap contract were preserved by the UI/GAP-16 patch. `/ws/realtime` is not part of OpenAPI HTTP route totals. Live backend response shapes and online/offline permission boundaries still require separate integration verification.

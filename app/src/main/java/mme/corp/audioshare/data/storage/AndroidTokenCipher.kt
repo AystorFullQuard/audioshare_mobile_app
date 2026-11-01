@@ -15,9 +15,8 @@ import javax.crypto.spec.GCMParameterSpec
  * IVs are randomized by the platform for each encryption. Neither token nor key is logged.
  * This protects tokens at rest; an unlocked/compromised device is not a security boundary.
  */
-internal class AndroidTokenCipher {
-    @Volatile
-    private var cachedKey: SecretKey? = null
+internal class AndroidTokenCipher(private val keyAlias: String = KEY_ALIAS) {
+    @Volatile private var cachedKey: SecretKey? = null
     fun seal(plain: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey())
@@ -49,11 +48,11 @@ internal class AndroidTokenCipher {
     private fun secretKey(): SecretKey {
         cachedKey?.let { return it }
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { cachedKey = it; return it }
+        (store.getKey(keyAlias, null) as? SecretKey)?.let { cachedKey = it; return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
+                keyAlias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)

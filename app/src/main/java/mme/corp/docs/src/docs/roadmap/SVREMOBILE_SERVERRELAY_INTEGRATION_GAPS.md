@@ -1,6 +1,6 @@
 # SvReMobile ↔ ServerRelay — architecture and contract gap register
 
-**Review:** latest verifiable 30 October patched source and ServerRelay OpenAPI. The exact requested 31 October 13:06 local working tree is not independently available. Owner confirms the preceding JVM and Android suites all pass (0 failures). GAP-00–08/20/22 remain accepted; new GAP-09–14 work is implemented to varying extents and requires its own tests and live verification. [Main roadmap](SVREMOBILE_ROADMAP.md).
+**Review:** latest available 31 October mobile source and available ServerRelay OpenAPI. The requested 1 November 20:07 local working trees are not independently available. Owner confirms the preceding JVM and Android suites all pass (0 failures). GAP-00–08/20/22 remain accepted; new GAP-09–14 work is implemented to varying extents and requires its own tests and live verification. [Main roadmap](SVREMOBILE_ROADMAP.md).
 
 ## Current architecture (observed, not assumed)
 
@@ -92,7 +92,7 @@ This is a **target responsibility diagram, not modules already present or a comm
 | ID | Status | Requirement / risk | Implementation dependency |
 |---|---|---|---|
 | **GAP-15 — offline host grant implementation** | 🟡 product choice resolved; engineering open | **R01 accepted:** no first-ever offline host. Creator must previously have signed into ServerRelay on same installation and satisfy a bounded device-bound offline entitlement. Exact TTL, logout/revocation, account switch and local proof mechanism remain security-design tasks. | AUTH-03, OFF-01, SEC-03 |
-| **GAP-16 — offline local trust/policy** | ⬜ | Server ACLs and revoked refresh tokens cannot be queried offline. Use local encrypted room authority, QR/PIN + host approval + trusted-key records; separate cloud-only policy. | OFF-02..04, SYNC-02 |
+| **GAP-16 — offline local trust/policy** | 🟡 | Implemented fail-closed local admission policy (verified entitlement required), explicit six-digit comparison and manual host admission, per-room/two-listener bounds, expiry and revocation; separate AndroidKeyStore AES-GCM store for opt-in trusted peer identity. **Not wired** to QR, grant issuing, active peer sockets or media; trusted peers never auto-enter. Server ACLs/revoked JWTs cannot be queried offline. | OFF-02..04, SYNC-02 |
 | **GAP-17 — media modes & video** | ⬜ | **R04 accepted:** first 1:1 interactive audio, next host+two-listener one-way audio share; only host-approved guests in share mode. Video calls/camera-on upgrades later. Existing PCM transport is not accepted secure low-latency A/V; compare WebRTC/Opus/DTLS-SRTP and alternatives. | CALL-00..02, AUD-01..03, VID-00..03 |
 | **GAP-18 — cloud reconnection** | ⬜ | Automatic token/session/policy refresh cannot occur when no server route exists. Network/captive LAN/multi-network selection and deferred reconciliation must not block peer media or spin loops. | ENV-02, SYNC-00..03, PERF-01 |
 | **GAP-19 — Google Play release constraints** | ⬜ | `targetSdk=36` now; Play release will need microphone/camera/FGS permissions/declarations, user-visible background audio notification, production HTTPS, test tracks, 3-phone engineering acceptance (models/OS pending), potentially additional Play Console testers, and Android 17 local-network permission plan on target SDK 37+. | VID-02, SEC-05, CI-02, PROD-01..03 |
