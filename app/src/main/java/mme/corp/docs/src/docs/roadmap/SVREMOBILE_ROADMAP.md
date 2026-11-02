@@ -1,7 +1,7 @@
 # SvReMobile — Android / ServerRelay integration roadmap
 
-**Source:** latest available 31 October SvReMobile GAP-09–14 full-source package and supplied ServerRelay archive, compared with the requested 1 November 20:07 EET working-tree state (not independently available). Owner reports pre-change unit and Android tests passing. R01–R04 remain accepted.
-**Current integration (1 Nov review, based on available archives):** owner reports all pre-patch unit and Android tests pass (0 failures), and local ServerRelay login works. GAP-00–08/20/22 are accepted for prior tested mobile scope. GAP-09–10 now provide opt-in room-scoped WSS reconnect/resubscription/REST refresh and invite/call REST controls in the room screen. GAP-11 provides manually verified P-256 ECDH and directional AES-GCM/replay groundwork **without enabling media**. GAP-12 bounds runtime work; GAP-13 defines Android media-service permission/type policy; GAP-14 checks HTTP route parity. These new or extended steps are 🟡 until their own tests and live backend/device gates pass. GAP-16 now has default-deny per-room host admission, code comparison, a two-listener cap, bounded trust records and separate KeyStore-encrypted opt-in identity persistence. However GAP-15 offline host entitlement verification, QR acquisition, trusted peer entry screens and secure socket/media integration are absent, so GAP-16 is **not completed**.
+**Source:** latest verifiable 1 November SvReMobile UI/GAP-16 full-source archive and supplied ServerRelay source, compared with requested 1 November 21:57–21:58 EET working-tree state (not independently available). Owner-reported prior tests remain historical evidence only; this device-session correction requires rerun. R01–R04 remain accepted.
+**Current integration (1 Nov review, based on available archives):** owner reports all pre-patch unit and Android tests pass (0 failures), and local ServerRelay login works. GAP-00, GAP-02–08, GAP-20 and GAP-22 are accepted for prior tested mobile scope; GAP-01 is reopened for the new-session binding fix. GAP-09–10 now provide opt-in room-scoped WSS reconnect/resubscription/REST refresh and invite/call REST controls in the room screen. GAP-11 provides manually verified P-256 ECDH and directional AES-GCM/replay groundwork **without enabling media**. GAP-12 bounds runtime work; GAP-13 defines Android media-service permission/type policy; GAP-14 checks HTTP route parity. These new or extended steps are 🟡 until their own tests and live backend/device gates pass. GAP-16 now has default-deny per-room host admission, code comparison, a two-listener cap, bounded trust records and separate KeyStore-encrypted opt-in identity persistence. However GAP-15 offline host entitlement verification, QR acquisition, trusted peer entry screens and secure socket/media integration are absent, so GAP-16 is **not completed**.
 **Backend contract authority:** actual `ServerRelay/boot/src/main/java/sv/re/controller/`, `ServerRelay/dto/src/main/java/`, `ServerRelay/docs/src/main/docs/bootstrap/DEVICE_BOOTSTRAP_JOINT_CONTRACT_V1.md`, `security/SEC05_CSRF_CLIENT_CONTRACT.md`, and `realtime/` documents. **Do not use old mobile mock fixtures as proof of compatibility.**
 **Cross-references:** [integration GAP register](SVREMOBILE_SERVERRELAY_INTEGRATION_GAPS.md) · [dependency table](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) · [architecture and security decisions](SVREMOBILE_ARCHITECTURE_SECURITY_DECISIONS.md) · [entity contract](../contract/SVREMOBILE_SERVERRELAY_ENTITY_CONTRACT.md) · [endpoint matrix and JWT/CSRF rules](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md).
 
@@ -9,7 +9,7 @@
 
 | Symbol | Meaning | Rule |
 |---|---|---|
-| ✅ | Verified / accepted for the *specific described scope* | ✅ applies to GAP-00–08/20/22 for previously implemented, owner-tested client scope. Newly changed GAP-09–14/16 behavior requires its own rerun; production TLS and offline security remain separate. |
+| ✅ | Verified / accepted for the *specific described scope* | ✅ applies to previously tested GAP scope except GAP-01, reopened for session-rebind correction. Newly changed GAP-09–14/16 behavior requires its own rerun; production TLS and offline security remain separate. |
 | 🟡 | Partially present, under review, or decision pending | Existing classes do **not** demonstrate interoperability or release acceptance. |
 | ⬜ | Planned | No accepted implementation evidence for this step. |
 | ❌ | Confirmed blocker/incompatible candidate behavior | Static code-versus-contract mismatch or release-insecure configuration has been identified. |
@@ -18,11 +18,11 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 
 ## Overall completion
 
-**Owner-accepted planning/code items:** `18/104` (3 ANL plus GAP-00–08/20/22, scoped to prior implementation). Owner reports **all Android instrumentation and JVM tests pass** and live local login works. The new 1 November UI/GAP-16 changes have not been run on the owner’s devices; previous passing results do not validate its new code. GAP-11 explicitly disables the unsafe unencrypted UDP media prototype rather than claiming offline hosting now works. No remote internet media or production launch is implied.
+**Owner-accepted planning/code items:** `17/104` (3 ANL plus GAP-00–08/20/22, scoped to prior implementation). Owner reports **all Android instrumentation and JVM tests pass** and live local login works. The new 1 November UI/GAP-16 changes have not been run on the owner’s devices; previous passing results do not validate its new code. GAP-11 explicitly disables the unsafe unencrypted UDP media prototype rather than claiming offline hosting now works. No remote internet media or production launch is implied.
 
 | Stage | Status | Bar — verified steps | Priority / dependency |
 |---|---|---|---|
-| **GAP** — Cross-project integration blockers | 🟡 | `██████░░░░░░` 11/23 | P0 / registration, then auth/bootstrap acceptance |
+| **GAP** — Cross-project integration blockers | 🟡 | `█████░░░░░░░` 10/23 | P0 / registration, then auth/bootstrap acceptance |
 | **ANL** — Baseline and project understanding | ✅ | `████████████` 3/3 | Gate 0 product answers recorded; security design continues |
 | **ARCH** — Mobile architecture and ownership | 🟡 | `░░░░░░░░░░░░` 0/3 | Gate 0 / ANL |
 | **ENV** — Environments and network routing | 🟡 | `░░░░░░░░░░░░` 0/3 | P0 / SEC |
@@ -46,13 +46,19 @@ Stage ✅ requires every mandatory child ✅. **Status bars count ✅ steps only
 | **CI** — Build/release pipeline | ⬜ | `░░░░░░░░░░░░` 0/3 | Before release |
 | **PROD** — Production and operations | ⬜ | `░░░░░░░░░░░░` 0/4 | Last gate / all |
 
+## Current registration issue and acceptance gate
+
+**GAP-01 🟡 (new-session binding fix awaiting tests):** Every authenticated startup now calls the idempotent `POST /api/v1/devices/register` using the persistent `installationId`, even when the app has a saved server `deviceId`. ServerRelay resolves an existing ACTIVE `(userId, installationId)` before capacity checks and binds the **new login session** to that row. Successful recovery updates the cached device UUID; failed recovery retains it. Do not use client IP address, model or Android hardware identifiers as proof of device identity. A new IP is not a new device.
+
+**Verification:** sign in → register/bootstrap → sign out → sign in again on the *same installation*, then check the server device UUID and active-device count are unchanged; verify account switching and bootstrap recovery as well. Previous installed versions or reinstallation/app-data clearing may have left extra ACTIVE registrations, which need explicit account-authorized unlinking (`GET /api/v1/devices`, `DELETE /api/v1/devices/{deviceId}`) before an already-exceeded limit can be cleared. Never auto-remove devices by model/IP. Do not label this correction accepted without current Android and backend integration results.
+
 ## Dependency and parallel work table
 
 | Stage / workstream | Can be done now? | Parallel with | Blocked by |
 |---|---|---|---|
 | **GAP-22** — safe mobile entity snapshots | **Owner accepted** | GAP-06 auth DTOs; DEV/BOOT DTO alignment; offline design | Android Gradle tests; mapping/E2E validation later |
 | **GAP-00 / ENV / SEC** shared network safety | **Owner accepted; E2E pending** | Docs, tests, logging audit | Gradle tests, production TLS setup |
-| **GAP-01/02 / DEV** device registration + install identity | **Owner accepted; E2E pending** | GAP-06 auth, GAP-03/04 bootstrap | Gradle/JUnit + Docker authenticated registration; current-session device binding |
+| **GAP-01/02 / DEV** device registration + install identity | **GAP-01 patch pending tests; GAP-02 accepted** | GAP-06 auth, GAP-03/04 bootstrap | Gradle/JUnit + Docker authenticated registration; current-session device binding |
 | **GAP-06 / AUTH** CSRF/login/refresh | **Owner accepted; Docker E2E pending** | Device DTO work, offline threat model | Server CSRF policy + Docker E2E acceptance |
 | **GAP-03/04 / BOOT** bootstrap request/response | **Owner accepted; E2E pending** | GAP-06 CSRF, tests | Actual backend login→register→bootstrap E2E |
 | **GAP-05 / PRES / ROOM** presence model | **Owner accepted; Docker E2E pending** | DEV/BOOT DTOs, OBS/PERF | Bootstrap for end-to-end proof |
@@ -77,7 +83,7 @@ Full stage dependencies: [dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.
 
 Each row is deliberately brief: **status + step + what exists / what closure means**. Full investigative detail and decisions are in the linked companion files.
 
-### GAP — Integration blockers (`██████░░░░░░` 11/23 accepted)
+### GAP — Integration blockers (`█████░░░░░░░` 10/23 accepted)
 
 **00–08 ✅** network · registration · installation ID · bootstrap request/response · presence · CSRF/JWT · origin-safe transport · encrypted session · **09 🟡** reconnecting WSS + REST resnapshot · **10 🟡** invite/call UI control · **11 🟡** ECDH/AEAD groundwork; unsafe UDP still blocked · **12 🟡** bounded runtime work · **13 🟡** Android service-mode policy · **14 🟡** OpenAPI route checker · **15–19 ⬜** offline grant/trust, media, cloud sync and Play gate · **20 ✅** LAN-only v1 scope · **21 ⬜** background audio/role limits · **22 ✅** entity model. See [individual GAP dependency tree](SVREMOBILE_ROADMAP_DEPENDENCIES_TREE.md) and [contract matrix](../contract/SVREMOBILE_SERVERRELAY_ENDPOINTS.md). New 31 October code requires Android and real-server verification before acceptance.
 

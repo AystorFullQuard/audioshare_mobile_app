@@ -34,6 +34,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mme.corp.audioshare.AudioShareApplication
 import mme.corp.audioshare.BuildConfig
+import mme.corp.audioshare.exception.ApiException
 import mme.corp.audioshare.data.model.room.Room
 import mme.corp.audioshare.startup.BootstrapStartupRequest
 import mme.corp.audioshare.ui.screens.home.uiBlocks.RoomsEntryButton
@@ -86,13 +87,11 @@ fun HomeScreen(
             )
             app.container.bootstrapStartupCoordinator.initialize(request)
                 .onSuccess { app.container.currentUser.value = it.sessionBootstrap.user }
-                .onFailure {
-                    connectionError = "Unable to load rooms. Check your server connection."
-                }
+                .onFailure { connectionError = startupFailureMessage(it) }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            connectionError = "Unable to load rooms. Check your server connection."
+        } catch (exception: Exception) {
+            connectionError = startupFailureMessage(exception)
         } finally {
             isConnecting = false
         }
@@ -114,6 +113,20 @@ fun HomeScreen(
             )
         )
     )
+}
+
+/** Safe, actionable startup feedback; never expose response bodies or device identifiers. */
+internal fun startupFailureMessage(error: Throwable): String = when {
+    error is ApiException && error.apiError.code == "DEVICE_LIMIT_REACHED" ->
+        "Device limit reached. Unlink an old device from your ServerRelay account and retry."
+
+    error is ApiException && error.apiError.code == "DEVICE_IDENTITY_MISMATCH" ->
+        "Registered installation identity did not match this device. Check the account's devices."
+
+    error is ApiException && error.apiError.code == "DEVICE_UNLINKED" ->
+        "This device was unlinked. Reauthorize it in your account and retry."
+
+    else -> "Unable to load rooms. Check your ServerRelay connection and retry."
 }
 
 @Composable

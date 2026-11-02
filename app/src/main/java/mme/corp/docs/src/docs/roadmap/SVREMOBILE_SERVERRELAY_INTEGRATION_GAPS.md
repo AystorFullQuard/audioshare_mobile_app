@@ -18,17 +18,17 @@
 
 **Security hardening:** removed token fragments, username/password metadata and raw response logging from the authentication repository and affected login UI/storage log sites. Continue full LOG/SEC review before release; do not assume unrelated log sites are clean.
 
-GAP-01 uses `/devices/register` and rebinds the current authenticated session on startup (the backend registration operation is idempotent). GAP-02 retains the installation identity separately from the server device UUID.
+GAP-01 now invokes `/devices/register` on **every authenticated startup**, including when a prior device UUID is cached, so the new authenticated session is bound (the backend registration operation is idempotent). GAP-02 retains the installation identity separately from the server device UUID.
 
 **Android storage test gate:** owner reports the complete instrumentation suite passes after the JUnit `@After` signature correction; token-at-rest client work is accepted for this test scope. Physical-device backup/restore and production hardening still require separate testing.
 
-**GAP stage count:** 23 tracked items; 11 accepted (GAP-00–08/20/22). GAP-09–14 are 🟡: code foundations present, live/release/device acceptance still open.
+**GAP stage count:** 23 tracked items; 10 accepted (GAP-00, GAP-02–08, GAP-20/22). GAP-01 reopened for new-session rebinding. GAP-09–14 are 🟡: code foundations present, live/release/device acceptance still open.
 
 ## Confirmed high-priority mismatches / hazards
 
 | ID | Evidence in mobile | Authoritative server evidence | Consequence and target |
 |---|---|---|---|
-| **GAP-01 — device endpoint** ✅ | `POST /api/v1/devices/register` binds session after login | Backend `DevicesController` and OpenAPI agree | Accepted from owner-reported tests; live JWT/CSRF registration E2E pending. |
+| **GAP-01 — device endpoint** 🟡 | `POST /api/v1/devices/register` binds session after login | Backend `DevicesController` and OpenAPI agree | Reopened: new-session idempotent rebinding and stale mapping retention need owner tests; past green tests cover only the older flow. |
 | **GAP-02 — installation identity** ✅ | Install-scoped stable UUID separate from server device UUID | Backend `RegisterDeviceRq` requires `installationId` | Accepted from owner-reported tests; backup excluded. |
 | **GAP-03 — bootstrap request** ✅ | Uses `installationId` and aligned metadata | Backend `SessionBootstrapRq` | Accepted from owner-reported tests; Docker E2E pending. |
 | **GAP-04 — bootstrap response** ✅ | Maps session/user/config/devices/rooms/presence | Backend `SessionBootstrapRs` | Accepted from owner-reported tests; Docker E2E pending. |

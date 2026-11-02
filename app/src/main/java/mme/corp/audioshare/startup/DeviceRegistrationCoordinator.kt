@@ -27,37 +27,21 @@ class DeviceRegistrationCoordinator(
     override suspend fun resolveOrRegister(
         metadata: SessionBootstrapMetadata
     ): Result<String> {
-        val existingDeviceId = readDeviceId().getOrElse { exception ->
-            logFailure("Device lookup failed", exception)
-            return Result.failure(exception)
-        }?.trim()?.takeIf(String::isNotEmpty)
-
-        if (existingDeviceId != null) {
-            logger.debug(TAG, "Using persisted registered device")
-            return Result.success(existingDeviceId)
-        }
-
-        logger.info(
-            TAG,
-            "No persisted device; registering current installation"
-        )
-
+        // Each login issues a NEW server session. A cached device UUID alone does not
+        // bind that session. The backend's POST /devices/register is idempotent by
+        // (userId, installationId): it reuses the existing ACTIVE device and binds
+        // the current session without consuming an additional device slot.
+        // Always send the same installation ID; never derive identity from IP/model.
+        logger.debug(TAG, "Binding authenticated session to current installation")
         return registerAndPersist(metadata)
     }
 
     override suspend fun recoverRegistration(
         metadata: SessionBootstrapMetadata
     ): Result<String> {
-        logger.warn(
-            TAG,
-            "Replacing stale persisted device registration"
-        )
-
-        clearDeviceId().getOrElse { exception ->
-            logFailure("Stale device invalidation failed", exception)
-            return Result.failure(exception)
-        }
-
+        // Do not erase the saved device before recovery succeeds. A transient
+        // failure or DEVICE_LIMIT_REACHED must not destroy a valid local mapping.
+        logger.warn(TAG, "Retrying installation registration after bootstrap rejection")
         return registerAndPersist(metadata)
     }
 
@@ -99,23 +83,6 @@ class DeviceRegistrationCoordinator(
         throw exception
     } catch (exception: Exception) {
         logFailure("Registered device persistence failed", exception)
-        Result.failure(exception)
-    }
-
-    private suspend fun readDeviceId(): Result<String?> = try {
-        Result.success(deviceIdStore.getDeviceId())
-    } catch (exception: CancellationException) {
-        throw exception
-    } catch (exception: Exception) {
-        Result.failure(exception)
-    }
-
-    private suspend fun clearDeviceId(): Result<Unit> = try {
-        deviceIdStore.clearDeviceId()
-        Result.success(Unit)
-    } catch (exception: CancellationException) {
-        throw exception
-    } catch (exception: Exception) {
         Result.failure(exception)
     }
 

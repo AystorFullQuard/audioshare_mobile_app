@@ -74,6 +74,8 @@
 | `POST /api/v1/session/bootstrap` | Bearer + CSRF; `installationId`, bootstrap metadata | User, session flags, configuration, devices, rooms, presence, server snapshot |
 | `POST /api/v1/presence/heartbeat` | Bearer + CSRF; **only** required `deviceId` | `availability`, `activity`, `preference`, `currentRoomId`, `lastSeenAt`; activity is server-owned |
 
+**Repeat sign-in:** call the registration endpoint after each new login session even if the Android client has a cached `deviceId`; send the *same persisted installationId*. The backend reuses an ACTIVE device for the same account and installation before enforcing the three-active-device limit; the IP is not a device key. A `409 DEVICE_LIMIT_REACHED` indicates that this installation is not currently an existing ACTIVE registration (or is unlinked) and the limit is full. List/unlink historical devices only with user-authorized `GET /api/v1/devices` / `DELETE /api/v1/devices/{deviceId}`, never by guessed fingerprint or IP.
+
 > The OpenAPI records above are the documented surface of the supplied ServerRelay archive; some detailed backend security conditions are stricter than an operation's individual responses. Swagger security metadata alone does not describe mandatory CSRF for protected writes.
 
 ### Android runtime security (GAP-07/08)

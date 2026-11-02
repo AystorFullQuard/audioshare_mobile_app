@@ -20,18 +20,49 @@ import retrofit2.Response
 class DeviceRegistrationCoordinatorTest {
 
     @Test
-    fun existingDeviceIsReusedWithoutRegistration() = runTest {
+    fun existingDeviceIsReboundForNewSessionWithoutChangingItsId() = runTest {
         val api = RecordingDevicesApi()
         val store = FakeDeviceIdStore(DEVICE_ID)
         val coordinator = coordinator(api, store)
 
-        val result = coordinator.resolveOrRegister(
-            SessionBootstrapMetadata()
-        )
+        val result = coordinator.resolveOrRegister(metadata())
 
         assertEquals(DEVICE_ID, result.getOrThrow())
-        assertEquals(0, api.requestCount)
+        assertEquals(1, api.requestCount)
         assertEquals(DEVICE_ID, store.storedDeviceId)
+        assertEquals(store.storedInstallationId, api.lastRequest?.installationId)
+    }
+
+    @Test
+    fun repeatedSignInUsesTheSameInstallationIdentityAndServerDevice() = runTest {
+        val api = RecordingDevicesApi()
+        val store = FakeDeviceIdStore(DEVICE_ID)
+        val coordinator = coordinator(api, store)
+        val first = coordinator.resolveOrRegister(metadata()).getOrThrow()
+        val firstRequest = api.lastRequest
+        // A new access/refresh session must rebind on the backend; no new
+        // installation identity is generated during the second sign-in.
+        val second = coordinator.resolveOrRegister(metadata()).getOrThrow()
+
+        assertEquals(DEVICE_ID, first)
+        assertEquals(first, second)
+        assertEquals(2, api.requestCount)
+        assertEquals(firstRequest?.installationId, api.lastRequest?.installationId)
+        assertEquals(store.storedInstallationId, api.lastRequest?.installationId)
+        assertEquals(DEVICE_ID, store.storedDeviceId)
+    }
+
+    @Test
+    fun registrationFailureDoesNotErasePreviouslyBoundDevice() = runTest {
+        val expected = IllegalStateException("server unavailable")
+        val api = RecordingDevicesApi(failure = expected)
+        val store = FakeDeviceIdStore(DEVICE_ID)
+        val result = coordinator(api, store).resolveOrRegister(metadata())
+
+        assertTrue(result.isFailure)
+        assertSame(expected, result.exceptionOrNull())
+        assertEquals(DEVICE_ID, store.storedDeviceId)
+        assertEquals(1, api.requestCount)
     }
 
     @Test
@@ -95,7 +126,7 @@ class DeviceRegistrationCoordinatorTest {
     }
 
     @Test
-    fun recoveryClearsStaleDeviceAndPersistsReplacement() = runTest {
+    fun recoveryReplacesStaleDeviceOnlyAfterSuccessfulRegistration() = runTest {
         val api = RecordingDevicesApi()
         val store = FakeDeviceIdStore(STALE_DEVICE_ID)
         val coordinator = coordinator(api, store)
@@ -121,7 +152,7 @@ class DeviceRegistrationCoordinatorTest {
     }
 
     @Test
-    fun failedRecoveryRegistrationLeavesStaleDeviceInvalidated() = runTest {
+    fun failedRecoveryRetainsOldDeviceMappingForRetry() = runTest {
         val expected = IllegalStateException("registration failed")
         val api = RecordingDevicesApi(failure = expected)
         val store = FakeDeviceIdStore(STALE_DEVICE_ID)
@@ -132,7 +163,7 @@ class DeviceRegistrationCoordinatorTest {
         assertTrue(result.isFailure)
         assertSame(expected, result.exceptionOrNull())
         assertEquals(1, api.requestCount)
-        assertNull(store.storedDeviceId)
+        assertEquals(STALE_DEVICE_ID, store.storedDeviceId)
     }
 
     @Test

@@ -7,10 +7,10 @@ Legend: ✅ accepted implemented scope · 🟡 partly implemented, new changes p
 ## GAP status tree — every item explicitly listed
 
 ```text
-GAP ██████░░░░░░ 11/23 accepted (47.8%); new GAP-09–14 work awaits new test/live gates
+GAP ██████░░░░░░ 10/23 accepted (43.5%); new GAP-09–14 work awaits new test/live gates
 ├─ FOUNDATION / SERVER CONTRACT
 │  ├─ GAP-00 ✅ centralized endpoint origin/HTTPS debug allowlist
-│  ├─ GAP-01 ✅ device register route with server-assigned ID
+│  ├─ GAP-01 🟡 registration on each new session; E2E repeat-sign-in verification
 │  ├─ GAP-02 ✅ stable installation ID / backup exclusion
 │  ├─ GAP-03 ✅ bootstrap request contract
 │  ├─ GAP-04 ✅ bootstrap response model
@@ -66,7 +66,7 @@ ANL ✅ 3/3 planning inventory, backend contracts and accepted requirements
 | GAP | Status | Can be done now | In parallel with | Blocked by for full acceptance |
 |---|---|---|---|---|
 | GAP-00 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-07; SEC-00 |
-| GAP-01 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-02, AUTH-00 |
+| GAP-01 | 🟡 | Implemented repeat-login idempotent session rebind; verify now | GAP-02, AUTH, TEST | Stable installation ID, device-limit E2E, current-session binding |
 | GAP-02 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-01, SEC-01 |
 | GAP-03 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-01/02 |
 | GAP-04 | ✅ | Accepted for prior tested scope | TEST, PERF, docs | GAP-03 |
